@@ -7,15 +7,81 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import * as z from 'zod';
+import { useRouter } from 'next/navigation';
+
+const signInSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+type FormData = z.infer<typeof signInSchema>;
+
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001/api';
 
 export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof FormData | 'server', string>>
+  >({});
+  const [formData, setFormData] = useState<FormData>({
+    email: '',
+    password: '',
+  });
+  const router = useRouter();
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name as keyof FormData]) {
+      setErrors((prev) => ({ ...prev, [name]: '' }));
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setIsLoading(false);
+    setErrors({});
+
+    try {
+      const validatedData = signInSchema.parse(formData);
+
+      const response = await fetch(`${BACKEND_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(validatedData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
+
+      localStorage.setItem('token', data.access_token);
+      router.push('/dashboard');
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const fieldErrors: Partial<Record<keyof FormData, string>> = {};
+        error.errors.forEach((err) => {
+          const path = err.path[0] as keyof FormData;
+          fieldErrors[path] = err.message;
+        });
+        setErrors(fieldErrors);
+      } else {
+        setErrors({
+          server:
+            error instanceof Error
+              ? error.message
+              : 'An unexpected error occurred',
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -47,20 +113,28 @@ export default function SignInPage() {
           </p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {errors.server && (
+            <p className="text-red-500 text-sm text-center">{errors.server}</p>
+          )}
           <div className="space-y-4 rounded-md">
             <div>
-              <Label htmlFor="email-address" className="text-gray-300">
-                Email address
+              <Label htmlFor="email" className="text-gray-300">
+                Email
               </Label>
               <Input
-                id="email-address"
+                id="email"
                 name="email"
                 type="email"
                 autoComplete="email"
+                value={formData.email}
+                onChange={handleChange}
                 required
                 className="mt-1 bg-gray-800 border-gray-700 text-white placeholder-gray-400"
                 placeholder="you@example.com"
               />
+              {errors.email && (
+                <p className="text-red-500 text-sm mt-1">{errors.email}</p>
+              )}
             </div>
             <div>
               <Label htmlFor="password" className="text-gray-300">
@@ -71,10 +145,15 @@ export default function SignInPage() {
                 name="password"
                 type="password"
                 autoComplete="current-password"
+                value={formData.password}
+                onChange={handleChange}
                 required
                 className="mt-1 bg-gray-800 border-gray-700 text-white placeholder-gray-400"
                 placeholder="••••••••"
               />
+              {errors.password && (
+                <p className="text-red-500 text-sm mt-1">{errors.password}</p>
+              )}
             </div>
           </div>
 

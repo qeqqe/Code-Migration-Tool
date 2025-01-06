@@ -45,9 +45,19 @@ export class AuthService {
       return {
         message: 'User created successfully',
       };
-    } catch {
+    } catch (error) {
+      console.error('Registration error:', error);
+
+      if (error instanceof ConflictException) {
+        throw error;
+      }
+
+      if (error.code === 'P2002') {
+        throw new ConflictException('Email or username already exists');
+      }
+
       throw new InternalServerErrorException(
-        'An error occured while registering'
+        'An error occurred while registering'
       );
     }
   }
@@ -62,10 +72,10 @@ export class AuthService {
       });
       // if doesn't throw an err
       if (!user) {
-        throw new UnauthorizedException('User doesnt exist');
+        throw new UnauthorizedException('Invalid credentials');
       }
       // verifying the password
-      const pwMatches = await argon2.verify(loginDto.password, user.password);
+      const pwMatches = await argon2.verify(user.password, loginDto.password);
       // if not matches throw err
       if (!pwMatches) {
         throw new UnauthorizedException('Invalid credentials');
@@ -83,7 +93,13 @@ export class AuthService {
         access_token,
         user: { email: user.email, username: user.username },
       };
-    } catch {
+    } catch (error) {
+      console.error('Login error:', error);
+
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
       throw new InternalServerErrorException('An error occurred during login');
     }
   }

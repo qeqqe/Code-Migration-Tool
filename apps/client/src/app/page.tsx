@@ -51,7 +51,7 @@ export default function WelcomePage() {
             size="lg"
             className="group w-full sm:w-auto bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
           >
-            <Link href="/signin">
+            <Link href="/signup">
               Get Started
               <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
@@ -62,7 +62,7 @@ export default function WelcomePage() {
             size="lg"
             className="w-full sm:w-auto border-gray-600 text-gray-300 hover:bg-gray-800"
           >
-            <Link href="/about">Learn More</Link>
+            <Link href="/signin">Sign up</Link>
           </Button>
         </div>
       </main>
