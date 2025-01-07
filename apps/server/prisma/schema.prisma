@@ -14,10 +14,62 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  username  String   @unique
-  password  String
+  id       String  @id @default(uuid())
+  email    String  @unique
+  username String  @unique
+  password String?
+
+  githubId    Int?         @unique
+  githubToken GithubToken?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  repositories Repository[]
+  auditLogs    AuditLog[]
+}
+
+model GithubToken {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  accessToken String // encryted
+  scopes      String[] // repo, admin, workflow
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Repository {
+  id            Int     @id
+  name          String
+  fullName      String // owner/repo format
+  private       Boolean
+  defaultBranch String
+
+  // rel
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  webhookId     Int?
+  webhookSecret String? // encryted
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, fullName])
+  @@index([fullName])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  resource  String // owner/repo or userId
+  metadata  Json // additional context
+  createdAt DateTime @default(now())
+
+  @@index([userId, action])
 }

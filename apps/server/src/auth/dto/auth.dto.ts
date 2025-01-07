@@ -23,3 +23,11 @@ export class LoginDto {
   @IsString()
   password: string;
 }
+
+export interface GitHubUserDto {
+  id: number;
+  login: string;
+  email: string | null;
+  name: string | null;
+  avatar_url: string;
+}

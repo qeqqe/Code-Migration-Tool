@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Github, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
@@ -174,6 +174,26 @@ export default function SignInPage() {
             </Button>
           </div>
         </form>
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-700"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-gray-900 text-gray-400">
+              Or continue with
+            </span>
+          </div>
+        </div>
+        <div className="mt-6">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+          >
+            <Github className="mr-2 h-4 w-4" />
+            Sign up with GitHub
+          </Button>
+        </div>
       </motion.div>
     </div>
   );
