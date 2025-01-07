@@ -19,7 +19,7 @@ model User {
   username String  @unique
   password String?
 
-  githubId    Int?         @unique
+  githubId    String?      @unique
   githubToken GithubToken?
 
   createdAt DateTime @default(now())

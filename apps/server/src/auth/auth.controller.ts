@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { AuthService } from './auth.service';
 import { ConfigService } from '@nestjs/config';
@@ -26,7 +27,11 @@ export class AuthController {
   }
 
   @Get('github/callback')
-  githubCallback(@Query('code') code: string) {
-    return this.authService.githubCallback(code);
+  async githubCallback(@Query('code') code: string, @Res() res: Response) {
+    const result = await this.authService.githubCallback(code);
+    if (result.success) {
+      return res.redirect(result.redirectUrl);
+    }
+    return res.redirect(result.redirectUrl);
   }
 }

@@ -22,7 +22,7 @@
     ],
     "types": ["jest", "node"],
     "paths": {
-      "@/*": ["./apps/client/*"]
+      "@/*": ["./apps/client/src/*"]
     }
   },
   "include": [

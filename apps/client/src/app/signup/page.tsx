@@ -9,6 +9,7 @@ import { ArrowLeft, Github, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
+import { handleGithubLogin } from '@/libs/auth';
 
 const signUpSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -87,22 +88,6 @@ export default function SignUpPage() {
       }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleGithubLogin = async () => {
-    try {
-      console.log(`Starting fetching the url`);
-      const response = await fetch(`${BACKEND_URL}/auth/github`);
-      if (!response.ok) {
-        return console.error('Unable to fetch');
-      }
-      const { url } = await response.json();
-      console.log(`got the url ${url}`);
-      window.location.href = url;
-    } catch (error) {
-      console.error('Failed to initiate GitHub login:', error);
-      router.push('/signup');
     }
   };
 

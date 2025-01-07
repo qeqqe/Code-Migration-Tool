@@ -62,7 +62,7 @@ export default function WelcomePage() {
             size="lg"
             className="w-full sm:w-auto border-gray-600 text-gray-300 hover:bg-gray-800"
           >
-            <Link href="/signin">Sign up</Link>
+            <Link href="/signin">Sign in</Link>
           </Button>
         </div>
       </main>

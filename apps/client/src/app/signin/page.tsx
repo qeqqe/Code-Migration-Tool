@@ -9,6 +9,7 @@ import { ArrowLeft, Github, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
+import { handleGithubLogin } from '@/libs/auth';
 
 const signInSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -186,6 +187,7 @@ export default function SignInPage() {
         </div>
         <div className="mt-6">
           <Button
+            onClick={handleGithubLogin}
             type="button"
             variant="outline"
             className="w-full bg-gray-800 border-gray-700 text-white hover:bg-gray-700"

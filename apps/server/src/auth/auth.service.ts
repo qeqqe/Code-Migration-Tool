@@ -4,14 +4,15 @@ import {
   ConflictException,
   InternalServerErrorException,
   HttpException,
+  Logger,
 } from '@nestjs/common';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-// makes dealing w github api's ez
-import { Octokit } from '@octokit/rest';
+import { AuthController } from './auth.controller';
+
 const prisma = new PrismaClient();
 
 @Injectable()
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly configService: ConfigService
   ) {}
 
+  private readonly logger = new Logger(AuthController.name);
   async register(registerDto: RegisterDto) {
     try {
       // checking if the user exists already
@@ -144,6 +146,8 @@ export class AuthService {
       );
       const GITHUB_CLIENT_ID =
         this.configService.get<string>('GITHUB_CLIENT_ID');
+
+      // Get access token
       const token_response = await fetch(
         'https://github.com/login/oauth/access_token',
         {
@@ -159,53 +163,73 @@ export class AuthService {
           }),
         }
       );
-      const { access_token, scope } = await token_response.json();
-      if (!access_token) {
-        throw new HttpException('Failed to get access token', 400);
+
+      const tokenData = await token_response.json();
+      this.logger.debug('GitHub token response:', tokenData);
+
+      if (!tokenData.access_token) {
+        this.logger.error('No access token in response:', tokenData);
+        throw new HttpException(
+          tokenData.error_description || 'Failed to get access token',
+          400
+        );
       }
-      // init octokit
-      const octokit = new Octokit({ auth: access_token });
 
-      // gets user data and emails
-      const [{ data: githubUser }, { data: emails }] = await Promise.all([
-        octokit.rest.users.getAuthenticated(),
-        octokit.rest.users.listEmailsForAuthenticatedUser(),
-      ]);
+      // Get user data using GitHub API directly
+      const userResponse = await fetch('https://api.github.com/user', {
+        headers: {
+          Authorization: `token ${tokenData.access_token}`,
+          Accept: 'application/vnd.github.v3+json',
+          'User-Agent': 'Code-Migration-Tool',
+        },
+      });
 
-      const primaryEmail = emails.find((email) => email.primary)?.email;
-
-      if (!primaryEmail) {
-        throw new HttpException('No primary email found', 400);
+      if (!userResponse.ok) {
+        this.logger.error('GitHub user response error:', {
+          status: userResponse.status,
+          statusText: userResponse.statusText,
+          body: await userResponse.text(),
+        });
+        throw new HttpException(
+          `GitHub API error: ${userResponse.statusText}`,
+          userResponse.status
+        );
       }
+
+      const githubUser = await userResponse.json();
+
+      // Use email from user profile or generate one
+      const userEmail = githubUser.email || `${githubUser.id}@github.user`;
 
       // db transaction, updating or creating the user for the multiple cases
       const result = await prisma.$transaction(async (tx) => {
         const user = await tx.user.upsert({
           // creating or updating the local app user
-          where: { githubId: githubUser.id },
+          where: { githubId: githubUser.id.toString() },
           update: {
-            email: primaryEmail,
+            email: userEmail,
             username: githubUser.login,
             updatedAt: new Date(),
           },
           create: {
-            email: primaryEmail,
+            email: userEmail,
             username: githubUser.login,
-            githubId: githubUser.id,
+            githubId: githubUser.id.toString(),
+            password: null, // explicitly set password as null for GitHub users
           },
         });
         // updating or creating gh token
         await tx.githubToken.upsert({
           where: { userId: user.id },
           update: {
-            accessToken: access_token,
-            scopes: scope.split(','),
+            accessToken: tokenData.access_token,
+            scopes: tokenData.scope.split(','),
             updatedAt: new Date(),
           },
           create: {
             userId: user.id,
-            accessToken: access_token,
-            scopes: scope.split(','),
+            accessToken: tokenData.access_token,
+            scopes: tokenData.scope.split(','),
           },
         });
         // logging history
@@ -215,7 +239,7 @@ export class AuthService {
             action: 'auth.github.login',
             resource: user.id,
             metadata: {
-              scopes: scope.split(','),
+              scopes: tokenData.scope.split(','),
               timestamp: new Date().toISOString(),
             },
           },
@@ -227,24 +251,56 @@ export class AuthService {
           username: user.username,
         };
 
-        // creating jwt token for the github logging
-        const token = this.signToken(payload);
+        // Add await here
+        const token = await this.signToken(payload);
         return { user, token };
       });
 
+      const redirectUrl = `${this.configService.get<string>(
+        'FRONTEND_ORIGIN'
+      )}/auth/callback?token=${await result.token}&email=${encodeURIComponent(
+        result.user.email
+      )}&username=${encodeURIComponent(result.user.username)}`;
+
+      // Return both redirect URL and perform redirect
       return {
+        success: true,
+        redirectUrl,
         user: {
           email: result.user.email,
           username: result.user.username,
         },
-        access_token: result.token,
+        access_token: await result.token,
       };
     } catch (error) {
-      const FRONTEND_ORIGIN = this.configService.get<string>('FRONTEND_ORIGIN');
+      this.logger.error('GitHub callback detailed error:', {
+        error: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+
+      let errorMessage = 'Authentication failed';
+
+      if (error instanceof HttpException) {
+        errorMessage = error.message;
+      } else if (error.response?.status === 401) {
+        errorMessage = 'GitHub authentication failed. Please try again.';
+      } else if (error.message) {
+        errorMessage = `GitHub error: ${error.message}`;
+      }
+
+      console.error('Detailed error:', {
+        message: error.message,
+        response: error.response,
+        stack: error.stack,
+      });
+
       return {
-        redirectUrl: `${FRONTEND_ORIGIN}/auth/error?message=${encodeURIComponent(
-          error.message
-        )}`,
+        success: false,
+        redirectUrl: `${this.configService.get<string>(
+          'FRONTEND_ORIGIN'
+        )}/auth/error?message=${encodeURIComponent(errorMessage)}`,
       };
     }
   }
