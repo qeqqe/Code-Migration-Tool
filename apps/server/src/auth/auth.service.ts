@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-
+import { RepositoryInterface } from '../../typesInterface/index';
 @Injectable()
 export class AuthService {
   constructor(
@@ -222,6 +222,12 @@ export class AuthService {
         );
       }
 
+      const userRepository: RepositoryInterface =
+        await userRepositoryResponse.json();
+
+      this.logger.log(userRepository);
+      this.storeUserRepositories(githubUser.id.toString(), userRepository);
+
       // Use email from user profile or generate one
       const userEmail = githubUser.email || `${githubUser.id}@github.user`;
 
@@ -323,6 +329,95 @@ export class AuthService {
           'FRONTEND_ORIGIN'
         )}/auth/error?message=${encodeURIComponent(errorMessage)}`,
       };
+    }
+  }
+
+  async storeUserRepositories(
+    githubUserId: string,
+    userRepository: RepositoryInterface
+  ) {
+    try {
+      // find the local user record via their GitHub ID or another unique field
+      const user = await this.prisma.user.findUnique({
+        where: { githubId: githubUserId },
+      });
+      if (!user) {
+        throw new HttpException('User not found', 404);
+      }
+
+      // for each repo in userRepository, upsert into "Repository" table
+      const upserts = userRepository.map((repo) => {
+        return this.prisma.repository.upsert({
+          where: {
+            userId_fullName: {
+              userId: user.id,
+              fullName: repo.full_name,
+            },
+          },
+          update: {
+            private: repo.private,
+            defaultBranch: repo.default_branch,
+            description: repo.description,
+            homepage: typeof repo.homepage === 'string' ? repo.homepage : '',
+            language: repo.language ?? '',
+            visibility: repo.visibility,
+            size: repo.size,
+            hasIssues: repo.has_issues,
+            hasProjects: repo.has_projects,
+            hasWiki: repo.has_wiki,
+            archived: repo.archived,
+            disabled: repo.disabled,
+            fork: repo.fork,
+            htmlUrl: repo.html_url,
+            gitUrl: repo.git_url,
+            sshUrl: repo.ssh_url,
+            cloneUrl: repo.clone_url,
+            stargazersCount: repo.stargazers_count,
+            watchersCount: repo.watchers_count,
+            forksCount: repo.forks_count,
+            openIssuesCount: repo.open_issues_count,
+            lastSynced: new Date(),
+            updatedAt: new Date(),
+          },
+          create: {
+            userId: user.id,
+            name: repo.name,
+            fullName: repo.full_name,
+            private: repo.private,
+            defaultBranch: repo.default_branch,
+            description: repo.description,
+            homepage: typeof repo.homepage === 'string' ? repo.homepage : '',
+            language: repo.language ?? '',
+            visibility: repo.visibility,
+            size: repo.size,
+            hasIssues: repo.has_issues,
+            hasProjects: repo.has_projects,
+            hasWiki: repo.has_wiki,
+            archived: repo.archived,
+            disabled: repo.disabled,
+            fork: repo.fork,
+            htmlUrl: repo.html_url,
+            gitUrl: repo.git_url,
+            sshUrl: repo.ssh_url,
+            cloneUrl: repo.clone_url,
+            stargazersCount: repo.stargazers_count,
+            watchersCount: repo.watchers_count,
+            forksCount: repo.forks_count,
+            openIssuesCount: repo.open_issues_count,
+            lastSynced: new Date(),
+          },
+        });
+      });
+
+      // all upsert operations in a transaction
+      await this.prisma.$transaction(upserts);
+
+      // return the updated list
+      return { message: 'Repositories stored successfully' };
+    } catch (error) {
+      throw new InternalServerErrorException(
+        error.message || 'Failed to store repositories'
+      );
     }
   }
 }
