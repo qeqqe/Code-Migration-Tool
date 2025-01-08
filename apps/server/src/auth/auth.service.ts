@@ -44,6 +44,7 @@ export class AuthService {
           email: registerDto.email,
           username: registerDto.username,
           password: hashedPassword,
+          authMethod: 'LOCAL',
         },
       });
       return {

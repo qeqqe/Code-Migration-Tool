@@ -14,52 +14,90 @@ datasource db {
 }
 
 model User {
-  id       String  @id @default(uuid())
-  email    String  @unique
-  username String  @unique
-  password String?
+  id            String         @id @default(uuid())
+  email         String         @unique
+  username      String         @unique
+  password      String?
+  githubId      String?        @unique
+  authMethod    AuthMethod     @default(LOCAL)
+  githubToken   GithubToken?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  repositories  Repository[]
+  auditLogs     AuditLog[]
+  migrations    Migration[]
+  migrationJobs MigrationJob[]
+}
 
-  githubId    String?      @unique
-  githubToken GithubToken?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  repositories Repository[]
-  auditLogs    AuditLog[]
+enum AuthMethod {
+  LOCAL
+  GITHUB
 }
 
 model GithubToken {
-  id     String @id @default(uuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id])
-
-  accessToken String // encryted
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id])
+  accessToken String // encrypted
   scopes      String[] // repo, admin, workflow
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Repository {
-  id            Int     @id
-  name          String
-  fullName      String // owner/repo format
-  private       Boolean
-  defaultBranch String
-
-  // rel
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-
-  webhookId     Int?
-  webhookSecret String? // encryted
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                Int             @id @default(autoincrement())
+  name              String
+  fullName          String // owner/repo format
+  private           Boolean
+  defaultBranch     String
+  description       String?
+  homepage          String?
+  language          String?
+  visibility        String // public, private, internal
+  size              Int // size in KB 
+  hasIssues         Boolean         @default(true)
+  hasProjects       Boolean         @default(true)
+  hasWiki           Boolean         @default(true)
+  archived          Boolean         @default(false)
+  disabled          Boolean         @default(false)
+  fork              Boolean         @default(false)
+  htmlUrl           String
+  gitUrl            String?
+  sshUrl            String?
+  cloneUrl          String?
+  lastSynced        DateTime?
+  technologies      String[] // tech stack
+  analyzedAt        DateTime?
+  migrationEligible Boolean         @default(false)
+  migrationStatus   MigrationStatus @default(PENDING)
+  stargazersCount   Int             @default(0)
+  watchersCount     Int             @default(0)
+  forksCount        Int             @default(0)
+  openIssuesCount   Int             @default(0)
+  totalFiles        Int?
+  totalLines        Int?
+  affectedFiles     Int? // files that need migration
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+  webhookId         Int?
+  webhookSecret     String? // encrypted
+  migrations        Migration[]
+  migrationJobs     MigrationJob[]
 
   @@unique([userId, fullName])
   @@index([fullName])
+  @@index([language])
+  @@index([migrationStatus])
+}
+
+enum MigrationStatus {
+  PENDING
+  ANALYZING
+  READY
+  MIGRATING
+  COMPLETED
 }
 
 model AuditLog {
@@ -72,4 +110,56 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([userId, action])
+}
+
+model Migration {
+  id                 String         @id @default(uuid())
+  name               String // like react 17 to 18 or anything else
+  description        String
+  type               String // framework, language, dependency
+  sourceVersion      String
+  targetVersion      String
+  compatibilityRules Json // rules for migration compatibility
+  steps              Json // migration steps and rules
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  repositoryId       Int
+  repository         Repository     @relation(fields: [repositoryId], references: [id])
+  userId             String
+  user               User           @relation(fields: [userId], references: [id])
+  jobs               MigrationJob[]
+
+  @@index([type])
+  @@index([repositoryId])
+}
+
+model MigrationJob {
+  id           String     @id @default(uuid())
+  status       JobStatus  @default(PENDING)
+  progress     Float      @default(0) // 0-100%
+  logs         Json[] // array of log entries
+  result       Json? // migration results and changes
+  error        String? // error message
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  repositoryId Int
+  repository   Repository @relation(fields: [repositoryId], references: [id])
+  migrationId  String
+  migration    Migration  @relation(fields: [migrationId], references: [id])
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  filesChanged Json[] // array of changed file paths and diffs
+
+  @@index([status])
+  @@index([userId])
+  @@index([repositoryId])
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
 }
