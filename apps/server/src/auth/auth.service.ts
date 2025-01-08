@@ -7,26 +7,24 @@ import {
   Logger,
 } from '@nestjs/common';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { AuthController } from './auth.controller';
-
-const prisma = new PrismaClient();
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService
   ) {}
 
-  private readonly logger = new Logger(AuthController.name);
+  private readonly logger = new Logger(AuthService.name);
   async register(registerDto: RegisterDto) {
     try {
       // checking if the user exists already
-      const user = await prisma.user.findUnique({
+      const user = await this.prisma.user.findUnique({
         where: {
           email: registerDto.email,
         },
@@ -39,7 +37,7 @@ export class AuthService {
       // using argon for better and more secure hash then bcrypt
       const hashedPassword = await argon2.hash(registerDto.password);
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const newUser = await prisma.user.create({
+      const newUser = await this.prisma.user.create({
         data: {
           email: registerDto.email,
           username: registerDto.username,
@@ -70,7 +68,7 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     try {
       // checking if user exist
-      const user = await prisma.user.findUnique({
+      const user = await this.prisma.user.findUnique({
         where: {
           email: loginDto.email,
         },
@@ -199,11 +197,36 @@ export class AuthService {
 
       const githubUser = await userResponse.json();
 
+      this.logger.log(githubUser);
+
+      const userRepositoryResponse = await fetch(
+        'https://api.github.com/user/repos',
+        {
+          headers: {
+            Authorization: `token ${tokenData.access_token}`,
+            Accept: 'application/vnd.github.v3+json',
+            'User-Agent': 'Code-Migration-Tool',
+          },
+        }
+      );
+
+      if (!userRepositoryResponse.ok) {
+        this.logger.error('GitHub user response error:', {
+          status: userRepositoryResponse.status,
+          statusText: userRepositoryResponse.statusText,
+          body: await userRepositoryResponse.text(),
+        });
+        throw new HttpException(
+          `GitHub API error: ${userRepositoryResponse.statusText}`,
+          userRepositoryResponse.status
+        );
+      }
+
       // Use email from user profile or generate one
       const userEmail = githubUser.email || `${githubUser.id}@github.user`;
 
       // db transaction, updating or creating the user for the multiple cases
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const user = await tx.user.upsert({
           // creating or updating the local app user
           where: { githubId: githubUser.id.toString() },
@@ -252,7 +275,6 @@ export class AuthService {
           username: user.username,
         };
 
-        // Add await here
         const token = await this.signToken(payload);
         return { user, token };
       });
@@ -263,7 +285,6 @@ export class AuthService {
         result.user.email
       )}&username=${encodeURIComponent(result.user.username)}`;
 
-      // Return both redirect URL and perform redirect
       return {
         success: true,
         redirectUrl,
@@ -271,7 +292,6 @@ export class AuthService {
           email: result.user.email,
           username: result.user.username,
         },
-        access_token: await result.token,
       };
     } catch (error) {
       this.logger.error('GitHub callback detailed error:', {

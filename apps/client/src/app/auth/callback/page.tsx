@@ -2,49 +2,34 @@
 
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
 
-export default function AuthCallbackPage() {
+export default function AuthCallback() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get('token');
-  const email = searchParams.get('email');
-  const username = searchParams.get('username');
 
   useEffect(() => {
-    const handleCallback = async () => {
-      if (!token) {
-        router.push('/auth/error?message=No token provided');
-        return;
-      }
+    const token = searchParams.get('token');
+    const email = searchParams.get('email');
+    const username = searchParams.get('username');
 
-      try {
-        // Store auth data
-        localStorage.setItem('token', token);
-        localStorage.setItem(
-          'user',
-          JSON.stringify({
-            email: email,
-            username: username,
-          })
-        );
+    if (token && email && username) {
+      // Store the user info in localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify({ email, username }));
 
-        // Redirect to dashboard
-        router.push('/dashboard');
-      } catch (error) {
-        console.error('Auth callback error:', error);
-        router.push('/auth/error?message=Failed to complete authentication');
-      }
-    };
-
-    handleCallback();
-  }, [token, email, username, router]);
+      // redirect to dashboard
+      router.push('/dashboard');
+    } else {
+      // handle error case
+      router.push('/signin');
+    }
+  }, [router, searchParams]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="text-center">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-purple-500" />
-        <p className="mt-4 text-gray-400">Completing authentication...</p>
+        <h1 className="text-xl font-semibold">Completing login...</h1>
+        <p className="text-gray-500">Please wait while we redirect you.</p>
       </div>
     </div>
   );

@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
-import { Response } from 'express';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { AuthService } from './auth.service';
+import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { ConfigService } from '@nestjs/config';
+import { Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -22,7 +22,7 @@ export class AuthController {
   }
 
   @Get('github')
-  gitHub() {
+  github() {
     return this.authService.github();
   }
 
@@ -31,7 +31,8 @@ export class AuthController {
     const result = await this.authService.githubCallback(code);
     if (result.success) {
       return res.redirect(result.redirectUrl);
+    } else {
+      return res.redirect(result.redirectUrl); // error URL
     }
-    return res.redirect(result.redirectUrl);
   }
 }
