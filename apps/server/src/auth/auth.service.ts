@@ -228,13 +228,9 @@ export class AuthService {
       const userRepository: RepositoryInterface =
         await userRepositoryResponse.json();
 
-      // this.logger.log(userRepository);
-      this.storeUserRepositories(githubUser.id.toString(), userRepository);
-
-      // Use email from user profile or generate one
+      // use email from user profile or generate one
       const userEmail = githubUser.email || `${githubUser.id}@github.user`;
 
-      // db transaction, updating or creating the user for the multiple cases
       const result = await this.prisma.$transaction(async (tx) => {
         const user = await tx.user.upsert({
           // creating or updating the local app user
@@ -252,21 +248,33 @@ export class AuthService {
           },
         });
 
-        // Upsert GitHubProfile
-        await tx.gitHubProfile.upsert({
+        // create/update GitHub profile and store the result
+        const githubProfile = await tx.gitHubProfile.upsert({
           where: { githubId: githubUser.id },
           update: {
             login: githubUser.login,
             nodeId: githubUser.node_id,
             avatarUrl: githubUser.avatar_url,
+            gravatarId: githubUser.gravatar_id,
             url: githubUser.url,
             htmlUrl: githubUser.html_url,
+            followersUrl: githubUser.followers_url,
+            followingUrl: githubUser.following_url,
+            gistsUrl: githubUser.gists_url,
+            starredUrl: githubUser.starred_url,
+            subscriptionsUrl: githubUser.subscriptions_url,
+            organizationsUrl: githubUser.organizations_url,
+            reposUrl: githubUser.repos_url,
+            eventsUrl: githubUser.events_url,
             type: githubUser.type,
+            userViewType: githubUser.user_view_type,
+            siteAdmin: githubUser.site_admin,
             name: githubUser.name,
             company: githubUser.company,
             blog: githubUser.blog,
             location: githubUser.location,
             email: githubUser.email,
+            hireable: githubUser.hireable,
             bio: githubUser.bio,
             twitterUsername: githubUser.twitter_username,
             publicRepos: githubUser.public_repos,
@@ -275,8 +283,6 @@ export class AuthService {
             following: githubUser.following,
             createdAt: new Date(githubUser.created_at),
             updatedAt: new Date(githubUser.updated_at),
-            siteAdmin: githubUser.site_admin,
-            hireable: githubUser.hireable,
           },
           create: {
             userId: user.id,
@@ -284,14 +290,26 @@ export class AuthService {
             githubId: githubUser.id,
             nodeId: githubUser.node_id,
             avatarUrl: githubUser.avatar_url,
+            gravatarId: githubUser.gravatar_id,
             url: githubUser.url,
             htmlUrl: githubUser.html_url,
+            followersUrl: githubUser.followers_url,
+            followingUrl: githubUser.following_url,
+            gistsUrl: githubUser.gists_url,
+            starredUrl: githubUser.starred_url,
+            subscriptionsUrl: githubUser.subscriptions_url,
+            organizationsUrl: githubUser.organizations_url,
+            reposUrl: githubUser.repos_url,
+            eventsUrl: githubUser.events_url,
             type: githubUser.type,
+            userViewType: githubUser.user_view_type,
+            siteAdmin: githubUser.site_admin,
             name: githubUser.name,
             company: githubUser.company,
             blog: githubUser.blog,
             location: githubUser.location,
             email: githubUser.email,
+            hireable: githubUser.hireable,
             bio: githubUser.bio,
             twitterUsername: githubUser.twitter_username,
             publicRepos: githubUser.public_repos,
@@ -300,8 +318,6 @@ export class AuthService {
             following: githubUser.following,
             createdAt: new Date(githubUser.created_at),
             updatedAt: new Date(githubUser.updated_at),
-            siteAdmin: githubUser.site_admin,
-            hireable: githubUser.hireable,
           },
         });
 
@@ -339,8 +355,11 @@ export class AuthService {
         };
 
         const token = await this.signToken(payload);
-        return { user, token };
+        return { user, token, githubProfile }; // Add githubProfile to returned data
       });
+
+      // Now use the githubProfile from the transaction result
+      await this.storeUserRepositories(result.githubProfile.id, userRepository);
 
       const redirectUrl = `${this.configService.get<string>(
         'FRONTEND_ORIGIN'
@@ -389,26 +408,18 @@ export class AuthService {
     }
   }
 
+  // Update storeUserRepositories to accept githubProfileId directly
   async storeUserRepositories(
-    githubUserId: string,
+    githubProfileId: string,
     userRepository: RepositoryInterface
   ) {
     try {
-      // Find the GitHub profile instead of user
-      const githubProfile = await this.prisma.gitHubProfile.findFirst({
-        where: { githubId: parseInt(githubUserId) },
-      });
-
-      if (!githubProfile) {
-        throw new HttpException('GitHub profile not found', 404);
-      }
-
-      // Update upsert operations to use githubProfileId
+      // Remove the GitHub profile lookup since we now pass the ID directly
       const upserts = userRepository.map((repo) => {
         return this.prisma.repository.upsert({
           where: {
             githubProfileId_fullName: {
-              githubProfileId: githubProfile.id,
+              githubProfileId,
               fullName: repo.full_name,
             },
           },
@@ -438,7 +449,7 @@ export class AuthService {
             updatedAt: new Date(),
           },
           create: {
-            githubProfileId: githubProfile.id, // Use githubProfileId instead of userId
+            githubProfileId: githubProfileId,
             name: repo.name,
             fullName: repo.full_name,
             private: repo.private,
@@ -482,20 +493,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
-        githubProfile: {
-          select: {
-            avatarUrl: true,
-            name: true,
-            bio: true,
-            login: true,
-            followers: true,
-            following: true,
-            publicRepos: true,
-            company: true,
-            location: true,
-            blog: true,
-          },
-        },
+        githubProfile: true,
       },
     });
 
@@ -503,10 +501,6 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return {
-      email: user.email,
-      username: user.username,
-      githubProfile: user.githubProfile,
-    };
+    return user;
   }
 }

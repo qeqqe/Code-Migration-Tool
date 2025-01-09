@@ -7,9 +7,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
+
   app.enableCors({
-    origin:
+    origin: [
       configService.get<string>('FRONTEND_ORIGIN') || 'http://localhost:3000',
+      'http://localhost:3001', // callbacks to the backend
+    ],
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
@@ -18,6 +21,5 @@ async function bootstrap() {
   const port = process.env.PORT || 3001;
   await app.listen(port);
   logger.log(`🚀 Server running on http://localhost:${port}`);
-  logger.debug('CORS enabled for all origins in development');
 }
 bootstrap();

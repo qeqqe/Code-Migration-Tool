@@ -11,15 +11,15 @@ import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { handleGithubLogin } from '@/libs/auth';
 
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
 const signInSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 type FormData = z.infer<typeof signInSchema>;
-
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 export default function SignInPage() {
   const [isLoading, setIsLoading] = useState(false);

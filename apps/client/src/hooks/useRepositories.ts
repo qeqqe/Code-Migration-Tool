@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001/api';
+  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
 
 interface Repository {
   id: number;
@@ -25,37 +25,44 @@ export function useRepositories() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchRepositories = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('No authentication token found');
-        }
-
-        const response = await fetch(`${BACKEND_URL}/repositories`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch repositories');
-        }
-
-        const data = await response.json();
-        setRepositories(data);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to load repositories'
-        );
-      } finally {
-        setLoading(false);
+  const fetchRepositories = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
       }
-    };
 
-    fetchRepositories();
+      const response = await fetch(`${BACKEND_URL}/repositories`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/signin';
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch repositories');
+      }
+
+      const data = await response.json();
+      setRepositories(data);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Failed to load repositories'
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchRepositories();
+  }, [fetchRepositories]);
 
   return { repositories, loading, error };
 }

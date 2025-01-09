@@ -45,32 +45,42 @@ model GithubToken {
 }
 
 model GitHubProfile {
-  id              String       @id @default(uuid())
-  userId          String       @unique
-  user            User         @relation(fields: [userId], references: [id])
-  login           String
-  githubId        Int          @unique // GH numeric ID
-  nodeId          String
-  avatarUrl       String
-  url             String
-  htmlUrl         String
-  type            String
-  name            String?
-  company         String?
-  blog            String?
-  location        String?
-  email           String?
-  bio             String?
-  twitterUsername String?
-  publicRepos     Int
-  publicGists     Int
-  followers       Int
-  following       Int
-  createdAt       DateTime
-  updatedAt       DateTime
-  repositories    Repository[]
-  siteAdmin       Boolean      @default(false)
-  hireable        Boolean?
+  id               String       @id @default(uuid())
+  userId           String       @unique
+  user             User         @relation(fields: [userId], references: [id])
+  login            String
+  githubId         Int          @unique // GH numeric ID
+  nodeId           String
+  avatarUrl        String
+  gravatarId       String?
+  url              String
+  htmlUrl          String
+  followersUrl     String
+  followingUrl     String
+  gistsUrl         String
+  starredUrl       String
+  subscriptionsUrl String
+  organizationsUrl String
+  reposUrl         String
+  eventsUrl        String
+  type             String
+  userViewType     String?
+  siteAdmin        Boolean      @default(false)
+  name             String?
+  company          String?
+  blog             String?
+  location         String?
+  email            String?
+  hireable         Boolean?
+  bio              String?
+  twitterUsername  String?
+  publicRepos      Int
+  publicGists      Int
+  followers        Int
+  following        Int
+  createdAt        DateTime
+  updatedAt        DateTime
+  repositories     Repository[]
 
   @@index([login])
 }
@@ -117,7 +127,7 @@ model Repository {
   migrations        Migration[]
   migrationJobs     MigrationJob[]
 
-  @@unique([githubProfileId, fullName]) // unique constraint
+  @@unique([githubProfileId, fullName])
   @@index([fullName])
   @@index([language])
   @@index([migrationStatus])

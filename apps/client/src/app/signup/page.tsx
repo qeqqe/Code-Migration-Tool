@@ -11,6 +11,9 @@ import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { handleGithubLogin } from '@/libs/auth';
 
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+
 const signUpSchema = z.object({
   email: z.string().email('Invalid email address'),
   username: z.string().min(3, 'Username must be at least 3 characters'),
@@ -18,9 +21,6 @@ const signUpSchema = z.object({
 });
 
 type FormData = z.infer<typeof signUpSchema>;
-
-const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001/api';
 
 export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
