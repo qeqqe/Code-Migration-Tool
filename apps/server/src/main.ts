@@ -1,8 +1,3 @@
-/**
- * This is not a production server yet!
- * This is only a minimal backend to get started.
- */
-
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app/app.module';
@@ -13,7 +8,8 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   app.setGlobalPrefix(globalPrefix);
   app.enableCors({
-    origin: configService.get<string>('FRONTEND_ORIGIN'),
+    origin:
+      configService.get<string>('FRONTEND_ORIGIN') || 'http://localhost:3000',
     methods: 'GET,POST,DELETE,PUT',
     credentials: true,
     allowedHeaders: 'Content-Type,Authorization',
