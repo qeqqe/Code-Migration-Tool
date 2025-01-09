@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
 import { ConfigService } from '@nestjs/config';
-import { Response } from 'express';
+import { Response, Request } from 'express';
+import { JwtAuthGuard } from '../auth/strategy/jwt.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -37,5 +47,11 @@ export class AuthController {
     } else {
       return res.redirect(result.redirectUrl); // error URL
     }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  async getProfile(@Req() req: Request) {
+    return this.authService.getProfile(req.user.id);
   }
 }

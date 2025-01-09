@@ -9,6 +9,15 @@ interface Repository {
   fullName: string;
   private: boolean;
   defaultBranch: string;
+  language?: string;
+  description?: string;
+  stargazersCount: number;
+  forksCount: number;
+  visibility: string;
+  githubProfile: {
+    login: string;
+    avatarUrl: string;
+  };
 }
 
 export function useRepositories() {

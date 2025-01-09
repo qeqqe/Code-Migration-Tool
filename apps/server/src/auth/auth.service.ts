@@ -251,6 +251,60 @@ export class AuthService {
             password: null, // explicitly set password as null for GitHub users
           },
         });
+
+        // Upsert GitHubProfile
+        await tx.gitHubProfile.upsert({
+          where: { githubId: githubUser.id },
+          update: {
+            login: githubUser.login,
+            nodeId: githubUser.node_id,
+            avatarUrl: githubUser.avatar_url,
+            url: githubUser.url,
+            htmlUrl: githubUser.html_url,
+            type: githubUser.type,
+            name: githubUser.name,
+            company: githubUser.company,
+            blog: githubUser.blog,
+            location: githubUser.location,
+            email: githubUser.email,
+            bio: githubUser.bio,
+            twitterUsername: githubUser.twitter_username,
+            publicRepos: githubUser.public_repos,
+            publicGists: githubUser.public_gists,
+            followers: githubUser.followers,
+            following: githubUser.following,
+            createdAt: new Date(githubUser.created_at),
+            updatedAt: new Date(githubUser.updated_at),
+            siteAdmin: githubUser.site_admin,
+            hireable: githubUser.hireable,
+          },
+          create: {
+            userId: user.id,
+            login: githubUser.login,
+            githubId: githubUser.id,
+            nodeId: githubUser.node_id,
+            avatarUrl: githubUser.avatar_url,
+            url: githubUser.url,
+            htmlUrl: githubUser.html_url,
+            type: githubUser.type,
+            name: githubUser.name,
+            company: githubUser.company,
+            blog: githubUser.blog,
+            location: githubUser.location,
+            email: githubUser.email,
+            bio: githubUser.bio,
+            twitterUsername: githubUser.twitter_username,
+            publicRepos: githubUser.public_repos,
+            publicGists: githubUser.public_gists,
+            followers: githubUser.followers,
+            following: githubUser.following,
+            createdAt: new Date(githubUser.created_at),
+            updatedAt: new Date(githubUser.updated_at),
+            siteAdmin: githubUser.site_admin,
+            hireable: githubUser.hireable,
+          },
+        });
+
         // updating or creating gh token
         await tx.githubToken.upsert({
           where: { userId: user.id },
@@ -340,20 +394,21 @@ export class AuthService {
     userRepository: RepositoryInterface
   ) {
     try {
-      // find the local user record via their GitHub ID or another unique field
-      const user = await this.prisma.user.findUnique({
-        where: { githubId: githubUserId },
+      // Find the GitHub profile instead of user
+      const githubProfile = await this.prisma.gitHubProfile.findFirst({
+        where: { githubId: parseInt(githubUserId) },
       });
-      if (!user) {
-        throw new HttpException('User not found', 404);
+
+      if (!githubProfile) {
+        throw new HttpException('GitHub profile not found', 404);
       }
 
-      // for each repo in userRepository, upsert into "Repository" table
+      // Update upsert operations to use githubProfileId
       const upserts = userRepository.map((repo) => {
         return this.prisma.repository.upsert({
           where: {
-            userId_fullName: {
-              userId: user.id,
+            githubProfileId_fullName: {
+              githubProfileId: githubProfile.id,
               fullName: repo.full_name,
             },
           },
@@ -383,7 +438,7 @@ export class AuthService {
             updatedAt: new Date(),
           },
           create: {
-            userId: user.id,
+            githubProfileId: githubProfile.id, // Use githubProfileId instead of userId
             name: repo.name,
             fullName: repo.full_name,
             private: repo.private,
@@ -412,7 +467,6 @@ export class AuthService {
         });
       });
 
-      // all upsert operations in a transaction
       await this.prisma.$transaction(upserts);
 
       // return the updated list
@@ -422,5 +476,37 @@ export class AuthService {
         error.message || 'Failed to store repositories'
       );
     }
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        githubProfile: {
+          select: {
+            avatarUrl: true,
+            name: true,
+            bio: true,
+            login: true,
+            followers: true,
+            following: true,
+            publicRepos: true,
+            company: true,
+            location: true,
+            blog: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return {
+      email: user.email,
+      username: user.username,
+      githubProfile: user.githubProfile,
+    };
   }
 }

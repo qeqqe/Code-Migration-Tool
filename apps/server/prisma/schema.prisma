@@ -21,9 +21,9 @@ model User {
   githubId      String?        @unique
   authMethod    AuthMethod     @default(LOCAL)
   githubToken   GithubToken?
+  githubProfile GitHubProfile?
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  repositories  Repository[]
   auditLogs     AuditLog[]
   migrations    Migration[]
   migrationJobs MigrationJob[]
@@ -42,6 +42,37 @@ model GithubToken {
   scopes      String[] // repo, admin, workflow
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model GitHubProfile {
+  id              String       @id @default(uuid())
+  userId          String       @unique
+  user            User         @relation(fields: [userId], references: [id])
+  login           String
+  githubId        Int          @unique // GH numeric ID
+  nodeId          String
+  avatarUrl       String
+  url             String
+  htmlUrl         String
+  type            String
+  name            String?
+  company         String?
+  blog            String?
+  location        String?
+  email           String?
+  bio             String?
+  twitterUsername String?
+  publicRepos     Int
+  publicGists     Int
+  followers       Int
+  following       Int
+  createdAt       DateTime
+  updatedAt       DateTime
+  repositories    Repository[]
+  siteAdmin       Boolean      @default(false)
+  hireable        Boolean?
+
+  @@index([login])
 }
 
 model Repository {
@@ -79,14 +110,14 @@ model Repository {
   affectedFiles     Int? // files that need migration
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
-  userId            String
-  user              User            @relation(fields: [userId], references: [id])
+  githubProfileId   String
+  githubProfile     GitHubProfile   @relation(fields: [githubProfileId], references: [id])
   webhookId         Int?
   webhookSecret     String? // encrypted
   migrations        Migration[]
   migrationJobs     MigrationJob[]
 
-  @@unique([userId, fullName])
+  @@unique([githubProfileId, fullName]) // unique constraint
   @@index([fullName])
   @@index([language])
   @@index([migrationStatus])
