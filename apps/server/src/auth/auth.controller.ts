@@ -10,7 +10,10 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly configService: ConfigService
   ) {}
-
+  @Get()
+  test() {
+    return { message: 'Hello world' };
+  }
   @Post('register')
   register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);

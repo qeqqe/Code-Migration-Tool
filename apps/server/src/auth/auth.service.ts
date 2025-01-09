@@ -67,29 +67,32 @@ export class AuthService {
 
   async login(loginDto: LoginDto) {
     try {
-      // checking if user exist
+      // checking if the user exists
       const user = await this.prisma.user.findUnique({
         where: {
           email: loginDto.email,
         },
       });
-      // if doesn't throw an err
+      // if it doesn't throw an error
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
       }
-      // verifying the password
+      // check encrypted password
       const pwMatches = await argon2.verify(user.password, loginDto.password);
-      // if not matches throw err
       if (!pwMatches) {
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      // generating JWT access token
-      const access_token = await this.signToken({
+      const payload = {
         id: user.id,
         email: user.email,
         username: user.username,
-      });
+      };
+
+      const access_token = await this.signToken(payload);
+
+      console.log('Generated token:', access_token);
+      console.log('Token payload:', payload);
 
       return {
         message: 'Successfully logged in',
@@ -225,7 +228,7 @@ export class AuthService {
       const userRepository: RepositoryInterface =
         await userRepositoryResponse.json();
 
-      this.logger.log(userRepository);
+      // this.logger.log(userRepository);
       this.storeUserRepositories(githubUser.id.toString(), userRepository);
 
       // Use email from user profile or generate one

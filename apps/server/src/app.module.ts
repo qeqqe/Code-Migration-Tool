@@ -9,8 +9,8 @@ import { RepositoriesModule } from './repositories/repositories.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    PrismaModule,
     AuthModule,
+    PrismaModule,
     RepositoriesModule,
   ],
 })
