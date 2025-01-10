@@ -33,7 +33,7 @@ npm-debug.log
 yarn-error.log
 testem.log
 /typings
-
+test
 # System Files
 .DS_Store
 Thumbs.db

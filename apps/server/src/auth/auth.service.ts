@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { RepositoryInterface } from '../../typesInterface/index';
+import { RepositoryInterface, Repository } from '../../typesInterface/index';
 @Injectable()
 export class AuthService {
   constructor(
@@ -202,31 +202,44 @@ export class AuthService {
 
       this.logger.log(githubUser);
 
-      const userRepositoryResponse = await fetch(
-        'https://api.github.com/user/repos',
-        {
-          headers: {
-            Authorization: `token ${tokenData.access_token}`,
-            Accept: 'application/vnd.github.v3+json',
-            'User-Agent': 'Code-Migration-Tool',
-          },
-        }
-      );
-
-      if (!userRepositoryResponse.ok) {
-        this.logger.error('GitHub user response error:', {
-          status: userRepositoryResponse.status,
-          statusText: userRepositoryResponse.statusText,
-          body: await userRepositoryResponse.text(),
-        });
-        throw new HttpException(
-          `GitHub API error: ${userRepositoryResponse.statusText}`,
-          userRepositoryResponse.status
+      const baseUrl = 'https://api.github.com/user/repos';
+      let page = 1;
+      const perPage = 100;
+      let allRepos: RepositoryInterface = []; // This is already Repository[]
+      while (true) {
+        const userRepositoryResponse = await fetch(
+          `${baseUrl}?page=${page}&per_page=${perPage}`,
+          {
+            headers: {
+              Authorization: `Bearer ${tokenData.access_token}`,
+              Accept: 'application/vnd.github.v3+json',
+              'User-Agent': 'Code-Migration-Tool',
+            },
+          }
         );
+        if (!userRepositoryResponse.ok) {
+          this.logger.error('GitHub user response error:', {
+            status: userRepositoryResponse.status,
+            statusText: userRepositoryResponse.statusText,
+            body: await userRepositoryResponse.text(),
+          });
+          throw new HttpException(
+            `GitHub API error: ${userRepositoryResponse.statusText}`,
+            userRepositoryResponse.status
+          );
+        }
+        const repos = (await userRepositoryResponse.json()) as Repository[];
+        if (repos.length === 0) {
+          break;
+        }
+        allRepos = [...allRepos, ...repos];
+        if (repos.length < perPage) {
+          break;
+        }
+        page++;
       }
 
-      const userRepository: RepositoryInterface =
-        await userRepositoryResponse.json();
+      const userRepository = allRepos; // Don't specify type here
 
       // use email from user profile or generate one
       const userEmail = githubUser.email || `${githubUser.id}@github.user`;
