@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Github, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import * as z from 'zod';
 import { useRouter } from 'next/navigation';
 import { handleGithubLogin } from '@/libs/auth';
+import { GitHubLogoIcon } from '@radix-ui/react-icons';
 
 const BACKEND_URL =
   process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
@@ -192,7 +193,7 @@ export default function SignInPage() {
             variant="outline"
             className="w-full bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
           >
-            <Github className="mr-2 h-4 w-4" />
+            <GitHubLogoIcon className="mr-2 h-4 w-4" />
             Sign up with GitHub
           </Button>
         </div>

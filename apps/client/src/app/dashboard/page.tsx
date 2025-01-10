@@ -16,7 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { handleGithubLogin } from '@/libs/auth';
 
 interface UserInfo {
   email: string;
@@ -39,6 +39,8 @@ export default function DashboardPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const router = useRouter();
   const { repositories, loading, error } = useRepositories();
+
+  repositories.sort((a, b) => b.stargazersCount - a.stargazersCount);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -87,6 +89,10 @@ export default function DashboardPage() {
     fetchUserData();
   }, [router]);
 
+  const handleRepoClick = (username: string, name: string) => {
+    router.push(`/dashboard/${username}/${name}`);
+  };
+
   // show loading state only if no user data
   if (!user) {
     return (
@@ -97,7 +103,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black p-4 text-zinc-200">
+    <div className="min-h-screen bg-black/[88%] p-4 text-zinc-200 overflow-x-hidden">
       <div className="mx-auto max-w-6xl space-y-8">
         <nav className="flex items-center justify-between rounded-lg bg-zinc-900/50 p-4 backdrop-blur-sm border border-zinc-800/50">
           <div className="flex items-center space-x-3">
@@ -157,7 +163,7 @@ export default function DashboardPage() {
                   <div className="flex items-center space-x-2">
                     <div className="h-2 w-2 rounded-full bg-blue-400"></div>
                     <span className="text-sm text-zinc-400">
-                      {user.githubProfile.publicRepos} repositories
+                      {repositories.length} repositories
                     </span>
                   </div>
                 </div>
@@ -167,22 +173,22 @@ export default function DashboardPage() {
         </div>
 
         <Tabs defaultValue="repositories" className="w-full">
-          <TabsList className="inline-flex mb-6 bg-transparent border border-zinc-800 rounded-lg p-1">
+          <TabsList className="inline-flex mb-6 bg-transparent border py-2 border-zinc-800 rounded-lg w-full sm:w-auto">
             <TabsTrigger
               value="repositories"
-              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white px-4 py-2 rounded-md"
+              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white px-4 my-[0.4rem] rounded-md"
             >
               Repositories
             </TabsTrigger>
             <TabsTrigger
               value="profile"
-              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white px-4 py-2 rounded-md"
+              className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white px-4 py-1 rounded-md"
             >
               Profile
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="repositories">
+          <TabsContent value="repositories" className="mt-0">
             {loading ? (
               <div className="flex justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
@@ -199,6 +205,7 @@ export default function DashboardPage() {
                   <div
                     key={repo.id}
                     className="group relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30 p-4 transition-all hover:border-purple-500/50 hover:bg-zinc-800/50"
+                    onClick={() => handleRepoClick(user.username, repo.name)}
                   >
                     <div className="flex items-center space-x-3">
                       <GitHubLogoIcon className="h-5 w-5 text-zinc-400" />
@@ -237,7 +244,7 @@ export default function DashboardPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="profile">
+          <TabsContent value="profile" className="mt-0">
             <div className="space-y-6">
               <Card>
                 <CardHeader>
@@ -252,6 +259,21 @@ export default function DashboardPage() {
                   <div>
                     <Label className="text-zinc-400">Username</Label>
                     <p className="text-white mt-1">{user.username}</p>
+                  </div>
+                  <div>
+                    {!user.githubProfile && (
+                      <div className="mt-6">
+                        <Button
+                          onClick={handleGithubLogin}
+                          type="button"
+                          variant="outline"
+                          className="w-full bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
+                        >
+                          <GitHubLogoIcon className="mr-2 h-4 w-4" />
+                          Sign up with GitHub
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   {user.githubProfile && (
                     <>
