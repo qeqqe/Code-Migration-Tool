@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import React, { useEffect, useState } from 'react';
 import { Repository } from '@/types/repository.types';
 import { RepoContent } from '@/types/github.types';
@@ -20,6 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileExplorer } from '@/components/FileExplorer';
+import { CodeViewer } from '@/components/CodeViewer';
 
 const getMigrationStatusColor = (status: string): string => {
   const colors = {
@@ -44,6 +45,7 @@ const Page = () => {
   const [contents, setContents] = useState<RepoContent[]>([]);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [currentDirectory, setCurrentDirectory] = useState<string>('');
+  const [directoryContents, setDirectoryContents] = useState<RepoContent[]>([]);
 
   const fetchRepositoryContent = async (path?: string) => {
     try {
@@ -66,17 +68,19 @@ const Page = () => {
       if (data) {
         setRepository(data.repository);
 
-        // Handle both directory listing and file content
         if (data.currentContent) {
-          // This is a file
           setFileContent(data.currentContent.content);
           setCurrentPath(data.currentContent.path);
         } else {
-          // This is a directory
-          setContents(data.contents);
+          if (path) {
+            setDirectoryContents((prev) => [...prev, ...data.contents]);
+          } else {
+            setDirectoryContents(data.contents);
+          }
           setFileContent(null);
           setCurrentPath(path || '');
         }
+        setContents(data.contents);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -176,11 +180,12 @@ const Page = () => {
               </div>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-8 min-h-[calc(100vh-20rem)]">
-              <div className="w-full lg:w-80 shrink-0">
-                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full">
+            <div className="flex flex-col lg:flex-row gap-8 h-[36rem]">
+              {' '}
+              <div className="w-full lg:w-80 shrink-0 h-full">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full flex flex-col">
                   {currentPath && (
-                    <div className="p-2 border-b border-zinc-800">
+                    <div className="shrink-0 p-2 border-b border-zinc-800">
                       <button
                         onClick={handleBackClick}
                         className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
@@ -191,34 +196,25 @@ const Page = () => {
                     </div>
                   )}
                   <FileExplorer
-                    contents={contents}
+                    contents={directoryContents}
                     currentPath={currentPath}
                     onFileClick={(path, type) => handleFileClick(path, type)}
                   />
                 </div>
               </div>
-
-              <div className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
-                <div className="h-full">
-                  {fileContent ? (
-                    <div className="h-full overflow-auto">
-                      <pre className="p-8">
-                        <code className="text-sm text-zinc-300 font-mono">
-                          {fileContent}
-                        </code>
-                      </pre>
+              <div className="flex-1 h-full bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden">
+                {fileContent ? (
+                  <CodeViewer code={fileContent} path={currentPath} />
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center space-y-3">
+                      <FileCode className="h-8 w-8 text-zinc-500 mx-auto" />
+                      <p className="text-zinc-400">
+                        Select a file to view its contents
+                      </p>
                     </div>
-                  ) : (
-                    <div className="h-full flex items-center justify-center p-8">
-                      <div className="text-center space-y-3">
-                        <FileCode className="h-8 w-8 text-zinc-500 mx-auto" />
-                        <p className="text-zinc-400">
-                          Select a file to view its contents
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
 
