@@ -15,6 +15,7 @@ import {
   GitCommit,
   CheckCircle2,
   AlertOctagon,
+  ChevronLeft,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -42,6 +43,7 @@ const Page = () => {
   const [currentPath, setCurrentPath] = useState<string>('');
   const [contents, setContents] = useState<RepoContent[]>([]);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  const [currentDirectory, setCurrentDirectory] = useState<string>('');
 
   const fetchRepositoryContent = async (path?: string) => {
     try {
@@ -51,7 +53,6 @@ const Page = () => {
           process.env.NEXT_PUBLIC_BACKEND_URL
         }/repositories/${username}/${name}${path ? `?path=${path}` : ''}`,
         {
-          method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -59,17 +60,22 @@ const Page = () => {
         }
       );
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch repository data');
-      }
+      if (!response.ok) throw new Error('Failed to fetch repository data');
 
       const data = await response.json();
       if (data) {
         setRepository(data.repository);
-        setContents(data.contents);
+
+        // Handle both directory listing and file content
         if (data.currentContent) {
+          // This is a file
           setFileContent(data.currentContent.content);
           setCurrentPath(data.currentContent.path);
+        } else {
+          // This is a directory
+          setContents(data.contents);
+          setFileContent(null);
+          setCurrentPath(path || '');
         }
       }
     } catch (err) {
@@ -83,9 +89,21 @@ const Page = () => {
     fetchRepositoryContent();
   }, [username, name]);
 
-  const handleFileClick = (path: string) => {
+  const handleFileClick = async (path: string, type: 'file' | 'dir') => {
     setCurrentPath(path);
+
+    if (type === 'dir') {
+      setCurrentDirectory(path);
+      setFileContent(null);
+    }
+
     fetchRepositoryContent(path);
+  };
+
+  const handleBackClick = () => {
+    const parentPath = currentPath.split('/').slice(0, -1).join('/');
+    setCurrentPath(parentPath);
+    fetchRepositoryContent(parentPath);
   };
 
   if (loading) {
@@ -161,10 +179,21 @@ const Page = () => {
             <div className="flex flex-col lg:flex-row gap-8 min-h-[calc(100vh-20rem)]">
               <div className="w-full lg:w-80 shrink-0">
                 <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden h-full">
+                  {currentPath && (
+                    <div className="p-2 border-b border-zinc-800">
+                      <button
+                        onClick={handleBackClick}
+                        className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Back
+                      </button>
+                    </div>
+                  )}
                   <FileExplorer
                     contents={contents}
                     currentPath={currentPath}
-                    onFileClick={handleFileClick}
+                    onFileClick={(path, type) => handleFileClick(path, type)}
                   />
                 </div>
               </div>

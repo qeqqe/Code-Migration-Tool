@@ -4,7 +4,7 @@ import { RepoContent } from '@/types/github.types';
 interface FileExplorerProps {
   contents: RepoContent[];
   currentPath: string;
-  onFileClick: (path: string) => void;
+  onFileClick: (path: string, type: 'file' | 'dir') => void;
 }
 
 export const FileExplorer = ({
@@ -27,7 +27,7 @@ export const FileExplorer = ({
                   ? 'bg-purple-500/10 text-purple-400'
                   : 'text-zinc-300 hover:bg-zinc-800/50'
               }`}
-              onClick={() => onFileClick(item.path)}
+              onClick={() => onFileClick(item.path, item.type)}
             >
               {item.type === 'dir' ? (
                 <>
