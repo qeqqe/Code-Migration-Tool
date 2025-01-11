@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileExplorer } from '@/components/FileExplorer';
 import { CodeViewer } from '@/components/CodeViewer';
+import { getLanguageColor } from '@/libs/utils';
 
 const getMigrationStatusColor = (status: string): string => {
   const colors = {
@@ -42,8 +43,10 @@ const Page = () => {
   const [error, setError] = useState<string | null>(null);
   const [repository, setRepository] = useState<Repository | null>(null);
   const [currentPath, setCurrentPath] = useState<string>('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [contents, setContents] = useState<RepoContent[]>([]);
   const [fileContent, setFileContent] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [currentDirectory, setCurrentDirectory] = useState<string>('');
   const [directoryContents, setDirectoryContents] = useState<RepoContent[]>([]);
 
@@ -91,6 +94,7 @@ const Page = () => {
 
   useEffect(() => {
     fetchRepositoryContent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, name]);
 
   const handleFileClick = async (path: string, type: 'file' | 'dir') => {
@@ -155,7 +159,14 @@ const Page = () => {
                   <div className="flex items-center gap-6 pt-2">
                     {repository.language && (
                       <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-purple-400" />
+                        <div
+                          className="h-3 w-3 rounded-full"
+                          style={{
+                            backgroundColor: getLanguageColor(
+                              repository.language
+                            ),
+                          }}
+                        />
                         <span className="text-sm text-zinc-300">
                           {repository.language}
                         </span>

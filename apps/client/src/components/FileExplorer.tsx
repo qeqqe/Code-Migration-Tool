@@ -151,9 +151,11 @@ export const FileExplorer = ({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="shrink-0 p-4 border-b border-zinc-800">
-        <h3 className="text-sm font-medium text-zinc-300">Files</h3>
-      </div>
+      {!currentPath && (
+        <div className="shrink-0 p-4 border-b border-zinc-800">
+          <h3 className="text-sm font-medium text-zinc-300">Files</h3>
+        </div>
+      )}
       <ScrollArea className="flex-1">
         <div className="p-2">
           {treeStructure.map((node) => renderNode(node))}
