@@ -1,4 +1,12 @@
-import { Controller, Get, Logger, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Logger,
+  Req,
+  UseGuards,
+  Param,
+  Query,
+} from '@nestjs/common';
 import { RepositoriesService } from './repositories.service';
 import { JwtAuthGuard } from '../auth/strategy/jwt.guard';
 import { Request } from 'express';
@@ -20,13 +28,19 @@ export class RepositoriesController {
     );
     return this.repositoriesService.getRepository(req);
   }
-  @Post('get')
-  async getSpecificRepository(@Req() req: Request) {
-    const { username, name } = req.body;
+
+  @Get(':username/:name')
+  async getSpecificRepository(
+    @Req() req: Request,
+    @Param('username') username: string,
+    @Param('name') name: string,
+    @Query('path') path?: string
+  ) {
     return await this.repositoriesService.getSpecificRepository(
       req.user.id,
       username,
-      name
+      name,
+      path
     );
   }
 }

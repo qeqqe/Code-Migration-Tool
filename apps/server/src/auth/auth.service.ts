@@ -1,5 +1,7 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { Repository } from '@prisma/client';
 import {
-  Injectable,
   UnauthorizedException,
   ConflictException,
   InternalServerErrorException,
@@ -7,11 +9,11 @@ import {
   Logger,
 } from '@nestjs/common';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
-import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { RepositoryInterface, Repository } from '../../typesInterface/index';
+import { GitHubRepoResponse, GithubRepositories } from '../../typesInterface';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -177,7 +179,6 @@ export class AuthService {
         );
       }
 
-      // Get user data using GitHub API directly
       const userResponse = await fetch('https://api.github.com/user', {
         headers: {
           Authorization: `token ${tokenData.access_token}`,
@@ -205,7 +206,7 @@ export class AuthService {
       const baseUrl = 'https://api.github.com/user/repos';
       let page = 1;
       const perPage = 100;
-      let allRepos: RepositoryInterface = []; // This is already Repository[]
+      let allRepos: GitHubRepoResponse[] = [];
       while (true) {
         const userRepositoryResponse = await fetch(
           `${baseUrl}?page=${page}&per_page=${perPage}`,
@@ -228,7 +229,8 @@ export class AuthService {
             userRepositoryResponse.status
           );
         }
-        const repos = (await userRepositoryResponse.json()) as Repository[];
+
+        const repos: GitHubRepoResponse[] = await userRepositoryResponse.json();
         if (repos.length === 0) {
           break;
         }
@@ -239,7 +241,7 @@ export class AuthService {
         page++;
       }
 
-      const userRepository = allRepos; // Don't specify type here
+      const userRepository: GitHubRepoResponse[] = allRepos;
 
       // use email from user profile or generate one
       const userEmail = githubUser.email || `${githubUser.id}@github.user`;
@@ -263,7 +265,7 @@ export class AuthService {
 
         // create/update GitHub profile and store the result
         const githubProfile = await tx.gitHubProfile.upsert({
-          where: { githubId: githubUser.id },
+          where: { githubId: githubUser.id }, // This should be a number
           update: {
             login: githubUser.login,
             nodeId: githubUser.node_id,
@@ -300,7 +302,7 @@ export class AuthService {
           create: {
             userId: user.id,
             login: githubUser.login,
-            githubId: githubUser.id,
+            githubId: githubUser.id, // This should be a number
             nodeId: githubUser.node_id,
             avatarUrl: githubUser.avatar_url,
             gravatarId: githubUser.gravatar_id,
@@ -368,10 +370,10 @@ export class AuthService {
         };
 
         const token = await this.signToken(payload);
-        return { user, token, githubProfile }; // Add githubProfile to returned data
+        return { user, token, githubProfile };
       });
 
-      // Now use the githubProfile from the transaction result
+      // using the ghProfile from the transaction result
       await this.storeUserRepositories(result.githubProfile.id, userRepository);
 
       const redirectUrl = `${this.configService.get<string>(
@@ -421,13 +423,12 @@ export class AuthService {
     }
   }
 
-  // Update storeUserRepositories to accept githubProfileId directly
+  // update storeUserRepositories to accept githubProfileId directly
   async storeUserRepositories(
     githubProfileId: string,
-    userRepository: RepositoryInterface
+    userRepository: GithubRepositories
   ) {
     try {
-      // Remove the GitHub profile lookup since we now pass the ID directly
       const upserts = userRepository.map((repo) => {
         return this.prisma.repository.upsert({
           where: {
@@ -437,11 +438,12 @@ export class AuthService {
             },
           },
           update: {
+            name: repo.name,
             private: repo.private,
             defaultBranch: repo.default_branch,
-            description: repo.description,
-            homepage: typeof repo.homepage === 'string' ? repo.homepage : '',
-            language: repo.language ?? '',
+            description: repo.description || '',
+            homepage: repo.homepage || '',
+            language: repo.language || '',
             visibility: repo.visibility,
             size: repo.size,
             hasIssues: repo.has_issues,
@@ -462,14 +464,14 @@ export class AuthService {
             updatedAt: new Date(),
           },
           create: {
-            githubProfileId: githubProfileId,
+            githubProfileId,
             name: repo.name,
             fullName: repo.full_name,
             private: repo.private,
             defaultBranch: repo.default_branch,
-            description: repo.description,
-            homepage: typeof repo.homepage === 'string' ? repo.homepage : '',
-            language: repo.language ?? '',
+            description: repo.description || '',
+            homepage: repo.homepage || '',
+            language: repo.language || '',
             visibility: repo.visibility,
             size: repo.size,
             hasIssues: repo.has_issues,
@@ -492,8 +494,6 @@ export class AuthService {
       });
 
       await this.prisma.$transaction(upserts);
-
-      // return the updated list
       return { message: 'Repositories stored successfully' };
     } catch (error) {
       throw new InternalServerErrorException(
@@ -515,5 +515,334 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  private transformGithubRepo(
+    repo: Partial<GitHubRepoResponse> | Repository
+  ): GitHubRepoResponse {
+    const isGitHubRepo = 'node_id' in repo;
+    const isPrismaRepo = 'createdAt' in repo && repo.createdAt instanceof Date;
+
+    // Get dates with proper type checking
+    const created = isPrismaRepo
+      ? (repo as Repository).createdAt.toISOString()
+      : isGitHubRepo && (repo as GitHubRepoResponse).created_at
+      ? (repo as GitHubRepoResponse).created_at
+      : new Date().toISOString();
+
+    const updated = isPrismaRepo
+      ? (repo as Repository).updatedAt.toISOString()
+      : isGitHubRepo && (repo as GitHubRepoResponse).updated_at
+      ? (repo as GitHubRepoResponse).updated_at
+      : new Date().toISOString();
+
+    return {
+      id: repo.id,
+      node_id: isGitHubRepo ? (repo as GitHubRepoResponse).node_id : '',
+      name: repo.name,
+      full_name: isGitHubRepo
+        ? (repo as GitHubRepoResponse).full_name
+        : (repo as Repository).fullName,
+      private: repo.private,
+      owner: isGitHubRepo
+        ? (repo as GitHubRepoResponse).owner
+        : {
+            login: '',
+            id: 0,
+            node_id: '',
+            avatar_url: '',
+            gravatar_id: '',
+            url: '',
+            html_url: '',
+            followers_url: '',
+            following_url: '',
+            gists_url: '',
+            starred_url: '',
+            subscriptions_url: '',
+            organizations_url: '',
+            repos_url: '',
+            events_url: '',
+            received_events_url: '',
+            type: '',
+            site_admin: false,
+          },
+      html_url: isGitHubRepo
+        ? (repo as GitHubRepoResponse).html_url
+        : (repo as Repository).htmlUrl,
+      description: repo.description || '',
+      fork: 'fork' in repo ? repo.fork : false,
+      url: isGitHubRepo ? (repo as GitHubRepoResponse).url : '',
+      // Add all required GitHubRepoResponse fields with proper type checking
+      forks_url: '',
+      keys_url: '',
+      collaborators_url: '',
+      teams_url: '',
+      hooks_url: '',
+      issue_events_url: '',
+      events_url: '',
+      assignees_url: '',
+      branches_url: '',
+      tags_url: '',
+      blobs_url: '',
+      git_tags_url: '',
+      git_refs_url: '',
+      trees_url: '',
+      statuses_url: '',
+      languages_url: '',
+      stargazers_url: '',
+      contributors_url: '',
+      subscribers_url: '',
+      subscription_url: '',
+      commits_url: '',
+      git_commits_url: '',
+      comments_url: '',
+      issue_comment_url: '',
+      contents_url: '',
+      compare_url: '',
+      merges_url: '',
+      archive_url: '',
+      downloads_url: '',
+      issues_url: '',
+      pulls_url: '',
+      milestones_url: '',
+      notifications_url: '',
+      labels_url: '',
+      releases_url: '',
+      deployments_url: '',
+      created_at: created,
+      updated_at: updated,
+      pushed_at: '',
+      git_url: 'gitUrl' in repo ? repo.gitUrl || '' : '',
+      ssh_url: 'sshUrl' in repo ? repo.sshUrl || '' : '',
+      clone_url: 'cloneUrl' in repo ? repo.cloneUrl || '' : '',
+      svn_url: '',
+      homepage: repo.homepage || '',
+      size: repo.size || 0,
+      stargazers_count: 'stargazersCount' in repo ? repo.stargazersCount : 0,
+      watchers_count: 'watchersCount' in repo ? repo.watchersCount : 0,
+      language: repo.language || '',
+      has_issues: 'hasIssues' in repo ? repo.hasIssues : false,
+      has_projects: 'hasProjects' in repo ? repo.hasProjects : false,
+      has_downloads: true,
+      has_wiki: 'hasWiki' in repo ? repo.hasWiki : false,
+      has_pages: false,
+      has_discussions: false,
+      forks_count: 'forksCount' in repo ? repo.forksCount : 0,
+      mirror_url: null,
+      archived: 'archived' in repo ? repo.archived : false,
+      disabled: 'disabled' in repo ? repo.disabled : false,
+      open_issues_count: 'openIssuesCount' in repo ? repo.openIssuesCount : 0,
+      license: null,
+      allow_forking: true,
+      is_template: false,
+      web_commit_signoff_required: false,
+      topics: [],
+      visibility: 'visibility' in repo ? repo.visibility : 'public',
+      forks: 'forksCount' in repo ? repo.forksCount : 0,
+      open_issues: 'openIssuesCount' in repo ? repo.openIssuesCount : 0,
+      watchers: 'watchersCount' in repo ? repo.watchersCount : 0,
+      default_branch: 'defaultBranch' in repo ? repo.defaultBranch : 'main',
+      permissions: {
+        admin: true,
+        maintain: true,
+        push: true,
+        triage: true,
+        pull: true,
+      },
+    };
+  }
+
+  async syncUserRepositories(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        githubProfile: true,
+        githubToken: true,
+      },
+    });
+
+    if (!user || !user.githubToken) {
+      throw new Error('User or GitHub token not found');
+    }
+
+    try {
+      const existingRepos = await this.prisma.repository.findMany({
+        where: { githubProfileId: user.githubProfile.id },
+      });
+
+      const transformedExistingRepos: GitHubRepoResponse[] = existingRepos.map(
+        (repo) => ({
+          id: repo.id,
+          node_id: '', // default values for required GitHubRepoResponse fields
+          name: repo.name,
+          full_name: repo.fullName,
+          private: repo.private,
+          owner: {
+            login: user.githubProfile.login,
+            id: user.githubProfile.githubId,
+            node_id: user.githubProfile.nodeId,
+            avatar_url: user.githubProfile.avatarUrl,
+            gravatar_id: user.githubProfile.gravatarId || '',
+            url: user.githubProfile.url,
+            html_url: user.githubProfile.htmlUrl,
+            followers_url: user.githubProfile.followersUrl,
+            following_url: user.githubProfile.followingUrl,
+            gists_url: user.githubProfile.gistsUrl,
+            starred_url: user.githubProfile.starredUrl,
+            subscriptions_url: user.githubProfile.subscriptionsUrl,
+            organizations_url: user.githubProfile.organizationsUrl,
+            repos_url: user.githubProfile.reposUrl,
+            events_url: user.githubProfile.eventsUrl,
+            received_events_url: '',
+            type: user.githubProfile.type,
+            site_admin: user.githubProfile.siteAdmin,
+          },
+          html_url: repo.htmlUrl,
+          description: repo.description || '',
+          fork: repo.fork,
+          url: '',
+          forks_url: '',
+          keys_url: '',
+          collaborators_url: '',
+          teams_url: '',
+          hooks_url: '',
+          issue_events_url: '',
+          events_url: '',
+          assignees_url: '',
+          branches_url: '',
+          tags_url: '',
+          blobs_url: '',
+          git_tags_url: '',
+          git_refs_url: '',
+          trees_url: '',
+          statuses_url: '',
+          languages_url: '',
+          stargazers_url: '',
+          contributors_url: '',
+          subscribers_url: '',
+          subscription_url: '',
+          commits_url: '',
+          git_commits_url: '',
+          comments_url: '',
+          issue_comment_url: '',
+          contents_url: '',
+          compare_url: '',
+          merges_url: '',
+          archive_url: '',
+          downloads_url: '',
+          issues_url: '',
+          pulls_url: '',
+          milestones_url: '',
+          notifications_url: '',
+          labels_url: '',
+          releases_url: '',
+          deployments_url: '',
+          created_at: repo.createdAt.toISOString(),
+          updated_at: repo.updatedAt.toISOString(),
+          pushed_at: '',
+          git_url: repo.gitUrl || '',
+          ssh_url: repo.sshUrl || '',
+          clone_url: repo.cloneUrl || '',
+          svn_url: '',
+          homepage: repo.homepage || '',
+          size: repo.size,
+          stargazers_count: repo.stargazersCount,
+          watchers_count: repo.watchersCount,
+          language: repo.language || '',
+          has_issues: repo.hasIssues,
+          has_projects: repo.hasProjects,
+          has_downloads: true,
+          has_wiki: repo.hasWiki,
+          has_pages: false,
+          has_discussions: false,
+          forks_count: repo.forksCount,
+          mirror_url: null,
+          archived: repo.archived,
+          disabled: repo.disabled,
+          open_issues_count: repo.openIssuesCount,
+          license: null,
+          allow_forking: true,
+          is_template: false,
+          web_commit_signoff_required: false,
+          topics: [],
+          visibility: repo.visibility,
+          forks: repo.forksCount,
+          open_issues: repo.openIssuesCount,
+          watchers: repo.watchersCount,
+          default_branch: repo.defaultBranch,
+          permissions: {
+            admin: true,
+            maintain: true,
+            push: true,
+            triage: true,
+            pull: true,
+          },
+        })
+      );
+
+      // fetching new repos from GitHub
+      const response = await fetch(
+        `${this.configService.get('GITHUB_API_URL')}/user/repos`,
+        {
+          headers: {
+            Authorization: `Bearer ${user.githubToken.accessToken}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch GitHub repositories');
+      }
+
+      const githubRepos: GitHubRepoResponse[] = await response.json();
+
+      // combine and deduplicate repos
+      const repoMap = new Map<string, GitHubRepoResponse>();
+
+      // add GH repos first
+      githubRepos.forEach((repo) => repoMap.set(repo.full_name, repo));
+
+      // then add transformed repos, only if they don't exist
+      transformedExistingRepos.forEach((repo) => {
+        if (!repoMap.has(repo.full_name)) {
+          repoMap.set(repo.full_name, repo);
+        }
+      });
+
+      //convert the map back to array
+      const allRepos: GitHubRepoResponse[] = Array.from(repoMap.values());
+
+      // Store the synchronized repositories
+      await this.storeUserRepositories(user.githubProfile.id, allRepos);
+
+      // Update last synced timestamp for the profile
+      await this.prisma.gitHubProfile.update({
+        where: { id: user.githubProfile.id },
+        data: { updatedAt: new Date() },
+      });
+    } catch (error) {
+      this.logger.error('Failed to sync repositories:', {
+        userId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      if (error instanceof HttpException) {
+        throw error;
+      }
+
+      if (error.response?.status === 401) {
+        throw new UnauthorizedException('GitHub token expired or invalid');
+      }
+
+      throw new InternalServerErrorException(
+        error.message || 'Failed to synchronize repositories'
+      );
+    }
+
+    this.logger.log(
+      `Successfully synchronized repositories for user ${userId}`
+    );
   }
 }

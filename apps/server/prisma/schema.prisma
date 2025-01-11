@@ -18,7 +18,7 @@ model User {
   email         String         @unique
   username      String         @unique
   password      String?
-  githubId      String?        @unique
+  githubId      String?        @unique // Keep as String
   authMethod    AuthMethod     @default(LOCAL)
   githubToken   GithubToken?
   githubProfile GitHubProfile?
@@ -49,7 +49,7 @@ model GitHubProfile {
   userId           String       @unique
   user             User         @relation(fields: [userId], references: [id])
   login            String
-  githubId         Int          @unique // GH numeric ID
+  githubId         Int          @unique // Keep as Int
   nodeId           String
   avatarUrl        String
   gravatarId       String?
