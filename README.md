@@ -72,6 +72,10 @@ This is a code migration application designed to help developers modernize their
 - Upon GitHub login, the tool fetches your repos, shows files, and can use AI to apply modern code transformations.
 - By caching repo data in Redis, we reduce API calls to GitHub and improve responsiveness.
 
+## Local File Upload
+
+We now support uploading your local files (up to 80MB). Any files under node_modules will be automatically ignored. The tool references your .gitignore to skip unneeded folders.
+
 ## Screenshots
 
 ### Welcome Page

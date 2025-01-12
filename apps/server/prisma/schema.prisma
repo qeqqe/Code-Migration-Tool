@@ -5,7 +5,9 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Add this line to ensure proper generation
+  previewFeatures = []
 }
 
 datasource db {
@@ -14,19 +16,21 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  username      String         @unique
-  password      String?
-  githubId      String?        @unique // Keep as String
-  authMethod    AuthMethod     @default(LOCAL)
-  githubToken   GithubToken?
-  githubProfile GitHubProfile?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  auditLogs     AuditLog[]
-  migrations    Migration[]
-  migrationJobs MigrationJob[]
+  id                String            @id @default(uuid())
+  email             String            @unique
+  username          String            @unique
+  password          String?
+  githubId          String?           @unique // Keep as String
+  authMethod        AuthMethod        @default(LOCAL)
+  githubToken       GithubToken?
+  githubProfile     GitHubProfile?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  auditLogs         AuditLog[]
+  migrations        Migration[]
+  migrationJobs     MigrationJob[]
+  uploadedFiles     UploadedFile[]
+  localRepositories LocalRepository[]
 }
 
 enum AuthMethod {
@@ -49,7 +53,7 @@ model GitHubProfile {
   userId           String       @unique
   user             User         @relation(fields: [userId], references: [id])
   login            String
-  githubId         Int          @unique // Keep as Int
+  githubId         Int          @unique
   nodeId           String
   avatarUrl        String
   gravatarId       String?
@@ -203,4 +207,50 @@ enum JobStatus {
   RUNNING
   COMPLETED
   FAILED
+}
+
+model UploadedFile {
+  id         String   @id @default(cuid())
+  name       String
+  path       String
+  size       Int
+  mimeType   String
+  status     String
+  uploadedAt DateTime @default(now())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId]) // index for better performance
+  @@map("uploaded_files")
+}
+
+model LocalRepository {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  files       LocalFile[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([userId, name])
+  @@map("local_repositories")
+}
+
+model LocalFile {
+  id                String          @id @default(cuid())
+  name              String
+  path              String
+  content           String? // For text files
+  size              Int
+  mimeType          String
+  parentPath        String? // For nested directory structure
+  localRepositoryId String
+  localRepository   LocalRepository @relation(fields: [localRepositoryId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([localRepositoryId, path])
+  @@map("local_files")
 }

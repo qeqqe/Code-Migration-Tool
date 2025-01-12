@@ -14,7 +14,7 @@ export class RedisService {
         this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379',
     });
     this.client.connect().catch((error) => {
-      this.logger.error(`An error occured: ${error}`);
+      this.logger.error(`An error occurred: ${error}`);
       throw error;
     });
   }

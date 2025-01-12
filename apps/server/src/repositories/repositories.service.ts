@@ -2,7 +2,7 @@ import { HttpException, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepositoryDto } from './types/repository.types';
-import { Repository } from '@prisma/client';
+import { Repository, Prisma } from '@prisma/client';
 import { GitHubContent } from '../../typesInterface';
 import { RedisService } from '../redis/redis.service';
 
@@ -14,6 +14,29 @@ interface RepoContentResponse {
     path: string;
     type: 'file' | 'dir';
   };
+}
+
+interface UploadedFile {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+  path?: string;
+}
+
+interface AllRepositoriesResponse {
+  githubRepos: RepositoryDto[];
+  localRepos: {
+    id: string;
+    name: string;
+    description?: string;
+    files: {
+      name: string;
+      path: string;
+      size: number;
+    }[];
+    createdAt: Date;
+  }[];
 }
 
 @Injectable()
@@ -209,5 +232,276 @@ export class RepositoriesService {
   // invalidate cache when needed
   async invalidateRepoCache(username: string, repoName: string): Promise<void> {
     await this.redis.invalidateRepoCache(username, repoName);
+  }
+
+  async getAllRepositories(userId: string): Promise<AllRepositoriesResponse> {
+    const [githubRepos, localRepos] = await Promise.all([
+      this.getGithubRepositories(userId),
+      this.prisma.localRepository.findMany({
+        where: { userId },
+        include: {
+          files: {
+            select: {
+              name: true,
+              path: true,
+              size: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      githubRepos,
+      localRepos,
+    };
+  }
+
+  private async getGithubRepositories(
+    userId: string
+  ): Promise<RepositoryDto[]> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { githubProfile: true },
+    });
+
+    if (!user?.githubProfile) {
+      return [];
+    }
+
+    const repositories = await this.prisma.repository.findMany({
+      where: { githubProfileId: user.githubProfile.id },
+      include: {
+        githubProfile: {
+          select: { login: true, avatarUrl: true },
+        },
+      },
+    });
+
+    return repositories.map(this.transformToDto);
+  }
+
+  async createLocalRepository(
+    userId: string,
+    data: { name: string; description?: string },
+    files: UploadedFile[]
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      // create the repository
+      const repository = await tx.localRepository.create({
+        data: {
+          ...data,
+          userId,
+        },
+      });
+
+      // process and store files
+      type LocalFilePromise = ReturnType<typeof tx.localFile.create>;
+
+      const filePromises = files.map((file) => {
+        if (file.size > 80 * 1024 * 1024) {
+          throw new HttpException('File size exceeds 80MB limit', 400);
+        }
+
+        if (file.path?.includes('node_modules')) {
+          return null; // Skip node_modules files
+        }
+
+        return tx.localFile.create({
+          data: {
+            name: file.originalname,
+            path: file.path || file.originalname,
+            content: file.buffer.toString('utf-8'),
+            size: file.size,
+            mimeType: file.mimetype,
+            localRepositoryId: repository.id,
+          },
+        });
+      });
+
+      const uploadedFiles = await Promise.all(
+        filePromises.filter((p): p is LocalFilePromise => p !== null)
+      );
+
+      return {
+        ...repository,
+        files: uploadedFiles,
+      };
+    });
+  }
+
+  async uploadLocalFile(
+    file: UploadedFile,
+    repositoryId: string
+  ): Promise<{ success: boolean; message: string; fileName: string }> {
+    try {
+      this.logger.log(
+        `Processing upload for file: ${file.originalname} to repository: ${repositoryId}`
+      );
+
+      if (file.size > 80 * 1024 * 1024) {
+        throw new HttpException('File size exceeds 80MB limit', 400);
+      }
+
+      type LocalFileWithRepo = Prisma.LocalFileGetPayload<{
+        include: { localRepository: true };
+      }>;
+
+      const localFile = (await this.prisma.localFile.create({
+        data: {
+          name: file.originalname,
+          path: file.path || file.originalname,
+          content: file.buffer.toString('utf-8'),
+          size: file.size,
+          mimeType: file.mimetype,
+          localRepositoryId: repositoryId,
+        },
+        include: {
+          localRepository: true,
+        },
+      })) as LocalFileWithRepo;
+
+      return {
+        success: true,
+        message: 'File uploaded successfully',
+        fileName: localFile.name,
+      };
+    } catch (error) {
+      this.logger.error('File upload failed:', {
+        filename: file.originalname,
+        error: error.message,
+        stack: error.stack,
+      });
+      throw new HttpException(
+        {
+          success: false,
+          message: error.message || 'Failed to upload file',
+          fileName: file.originalname,
+        },
+        error.status || 500
+      );
+    }
+  }
+
+  async getLocalRepositoryFiles(repositoryId: string) {
+    return this.prisma.localFile.findMany({
+      where: { localRepositoryId: repositoryId },
+      orderBy: { path: 'asc' },
+    });
+  }
+
+  async getLocalRepositoryContent(
+    userId: string,
+    repoName: string,
+    path?: string
+  ): Promise<RepoContentResponse> {
+    try {
+      const repository = await this.prisma.localRepository.findFirst({
+        where: {
+          userId,
+          name: repoName,
+        },
+        include: {
+          files: true,
+        },
+      });
+
+      if (!repository) {
+        throw new HttpException('Repository not found', 404);
+      }
+
+      let currentContent;
+      const files = await this.prisma.localFile.findMany({
+        where: {
+          localRepositoryId: repository.id,
+          ...(path
+            ? {
+                path: {
+                  startsWith: path + '/',
+                },
+              }
+            : {}),
+        },
+      });
+
+      if (path) {
+        const file = await this.prisma.localFile.findFirst({
+          where: {
+            localRepositoryId: repository.id,
+            path: path,
+          },
+        });
+
+        if (file) {
+          currentContent = {
+            content: file.content || '',
+            path: file.path,
+            type: 'file' as const,
+          };
+        }
+      }
+
+      const contents = files.map((file) => ({
+        name: file.name,
+        path: file.path,
+        type: 'file' as const,
+        size: file.size,
+        download_url: null,
+        sha: '',
+        url: '',
+        html_url: '',
+        git_url: '',
+        _links: {
+          self: '',
+          git: '',
+          html: '',
+        },
+      }));
+
+      return {
+        repository: {
+          id: 0,
+          name: repository.name,
+          description: repository.description || '',
+          private: true,
+          defaultBranch: 'main',
+          language: 'Unknown',
+          stargazersCount: 0,
+          watchersCount: 0,
+          forksCount: 0,
+          openIssuesCount: 0,
+          visibility: 'private',
+          migrationStatus: 'PENDING',
+          migrationEligible: true,
+          totalFiles: repository.files.length,
+          htmlUrl: '',
+          fullName: `local/${repository.name}`,
+          size: 0,
+          hasIssues: false,
+          hasProjects: false,
+          hasWiki: false,
+          archived: false,
+          disabled: false,
+          fork: false,
+          sshUrl: '',
+          cloneUrl: '',
+          gitUrl: '',
+          homepage: '',
+          technologies: [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          githubProfile: {
+            login: 'local',
+            avatarUrl: '',
+          },
+          githubProfileId: 'local',
+        },
+        contents,
+        currentContent,
+      };
+    } catch (error) {
+      this.logger.error('Error fetching local repository:', error);
+      throw error;
+    }
   }
 }
