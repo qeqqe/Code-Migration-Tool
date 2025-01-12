@@ -2,7 +2,6 @@
 
 import { useParams } from 'next/navigation';
 import React, { useEffect, useState } from 'react';
-import { Repository } from '@/types/repository.types';
 import { RepoContent } from '@/types/github.types';
 import {
   GitBranch,
@@ -22,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileExplorer } from '@/components/FileExplorer';
 import { CodeViewer } from '@/components/CodeViewer';
 import { getLanguageColor } from '@/libs/utils';
+import { ExtendedRepository } from '@/types/repository.types';
 
 const getMigrationStatusColor = (status: string): string => {
   const colors = {
@@ -41,7 +41,7 @@ const Page = () => {
   const { username, name } = params || {};
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [repository, setRepository] = useState<Repository | null>(null);
+  const [repository, setRepository] = useState<ExtendedRepository | null>(null);
   const [currentPath, setCurrentPath] = useState<string>('');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [contents, setContents] = useState<RepoContent[]>([]);
@@ -334,13 +334,13 @@ const Page = () => {
                         {repository.migrationEligible ? 'Yes' : 'No'}
                       </span>
                     </div>
-                    {repository.technologies?.length > 0 && (
+                    {(repository.technologies?.length ?? 0) > 0 && (
                       <div>
                         <span className="text-zinc-400 block mb-2">
                           Technologies:
                         </span>
                         <div className="flex flex-wrap gap-2">
-                          {repository.technologies.map((tech) => (
+                          {repository.technologies?.map((tech) => (
                             <Badge
                               key={tech}
                               variant="secondary"

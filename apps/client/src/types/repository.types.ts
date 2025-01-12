@@ -3,45 +3,60 @@ export interface GithubProfile {
   avatarUrl: string;
 }
 
-export interface Repository {
-  id: number;
+export interface LocalFile {
+  id: string;
   name: string;
-  fullName: string;
+  path: string;
+  size: number;
+  mimeType: string;
+  content?: string;
+}
+
+export interface BaseRepository {
+  id: number | string;
+  name: string;
+  description?: string;
   private: boolean;
   defaultBranch: string;
-  description?: string;
-  homepage?: string;
   language?: string;
+  stargazersCount: number;
+  watchersCount: number;
+  forksCount: number;
+  openIssuesCount: number;
   visibility: 'public' | 'private' | 'internal';
-  size: number;
-  hasIssues: boolean;
-  hasProjects: boolean;
-  hasWiki: boolean;
-  archived: boolean;
-  disabled: boolean;
-  fork: boolean;
-  htmlUrl: string;
-  gitUrl?: string;
-  sshUrl?: string;
-  cloneUrl?: string;
-  lastSynced?: string;
-  technologies: string[];
-  analyzedAt?: string;
-  migrationEligible: boolean;
   migrationStatus:
     | 'PENDING'
     | 'ANALYZING'
     | 'READY'
     | 'MIGRATING'
     | 'COMPLETED';
-  stargazersCount: number;
-  watchersCount: number;
-  forksCount: number;
-  openIssuesCount: number;
+  migrationEligible?: boolean;
   totalFiles?: number;
-  totalLines?: number;
   affectedFiles?: number;
-  createdAt: string;
-  updatedAt: string;
-  githubProfile: GithubProfile;
+  technologies?: string[];
+}
+
+export interface Repository extends BaseRepository {
+  htmlUrl: string;
+  fullName: string;
+  size: number;
+}
+
+export interface LocalRepository extends BaseRepository {
+  files: LocalFile[];
+  createdAt: Date;
+}
+
+export interface RepositoriesResponse {
+  githubRepos: Repository[];
+  localRepos: LocalRepository[];
+}
+
+export interface ExtendedRepository extends BaseRepository {
+  technologies?: string[];
+  migrationEligible: boolean;
+  totalFiles?: number;
+  affectedFiles?: number;
+  htmlUrl: string;
+  fullName: string;
 }

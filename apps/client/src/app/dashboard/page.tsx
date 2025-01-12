@@ -14,6 +14,8 @@ import {
   GitBranch,
   LucideFolderPlus,
   CheckCircle2,
+  FolderGit2,
+  FileIcon,
 } from 'lucide-react';
 import { useRepositories } from '@/hooks/useRepositories';
 import {
@@ -28,6 +30,8 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/libs/utils';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
+import { CreateRepoDialog } from '@/components/CreateRepoDialog';
+import { RepositoriesResponse, Repository } from '@/types/repository.types';
 
 interface UserInfo {
   email: string;
@@ -56,7 +60,12 @@ interface FileState {
 export default function DashboardPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const router = useRouter();
-  const { repositories, loading, error } = useRepositories();
+  const {
+    repositories,
+    loading,
+    error,
+    refetch: refetchRepositories,
+  } = useRepositories();
   const { toast } = useToast();
   const [fileState, setFileState] = useState<FileState>({
     files: null,
@@ -64,8 +73,13 @@ export default function DashboardPage() {
     progress: 0,
     uploadedFiles: [],
   });
+  const [showCreateRepo, setShowCreateRepo] = useState(false);
+  const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
 
-  repositories.sort((a, b) => b.stargazersCount - a.stargazersCount);
+  const sortedGithubRepos = [...repositories.githubRepos].sort(
+    (a: Repository, b: Repository) =>
+      (b.stargazersCount || 0) - (a.stargazersCount || 0)
+  );
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -119,8 +133,19 @@ export default function DashboardPage() {
   };
 
   const uploadFiles = async (files: File[]) => {
+    if (!selectedRepoId) {
+      toast({
+        title: 'Error',
+        description: 'Please select or create a repository first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setFileState((prev) => ({ ...prev, uploading: true, progress: 0 }));
-    console.log(`Starting upload of ${files.length} files`);
+    console.log(
+      `Starting upload of ${files.length} files to repo ${selectedRepoId}`
+    );
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -147,7 +172,7 @@ export default function DashboardPage() {
       try {
         console.log(`Uploading ${file.name}...`);
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_BACKEND_URL}/repositories/upload`,
+          `${process.env.NEXT_PUBLIC_BACKEND_URL}/repositories/local/${selectedRepoId}/upload`,
           {
             method: 'POST',
             body: formData,
@@ -161,7 +186,7 @@ export default function DashboardPage() {
         try {
           result = await response.json();
         } catch (parseError) {
-          // ff response is not JSON, create a default result
+          // ff response is not JSON, creating a default result
           result = {
             success: response.ok,
             message: response.ok
@@ -200,6 +225,52 @@ export default function DashboardPage() {
     setFileState((prev) => ({ ...prev, uploading: false }));
   };
 
+  const handleCreateRepo = async (
+    data: { name: string; description: string },
+    files: File[]
+  ) => {
+    const formData = new FormData();
+    formData.append('name', data.name);
+    formData.append('description', data.description || '');
+
+    files.forEach((file) => {
+      if (!file.webkitRelativePath.includes('node_modules')) {
+        formData.append('files', file);
+      }
+    });
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/repositories/local`,
+        {
+          method: 'POST',
+          body: formData,
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to create repository');
+
+      const result = await response.json();
+      setShowCreateRepo(false);
+      toast({
+        title: 'Success',
+        description: `Repository created with ${result.files.length} files`,
+      });
+
+      // refresh repositories list
+      refetchRepositories();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to create repository',
+        variant: 'destructive',
+      });
+    }
+  };
+
   // show loading state only if no user data
   if (!user) {
     return (
@@ -208,6 +279,13 @@ export default function DashboardPage() {
       </div>
     );
   }
+
+  const hasRepositories =
+    repositories.githubRepos.length > 0 || repositories.localRepos.length > 0;
+
+  const totalReposCount =
+    (repositories?.githubRepos?.length || 0) +
+    (repositories?.localRepos?.length || 0);
 
   return (
     <div className="min-h-screen bg-black/[88%] p-4 text-zinc-200 overflow-x-hidden">
@@ -270,7 +348,7 @@ export default function DashboardPage() {
                   <div className="flex items-center space-x-2">
                     <div className="h-2 w-2 rounded-full bg-blue-400"></div>
                     <span className="text-sm text-zinc-400">
-                      {repositories.length} repositories
+                      {totalReposCount} repositories
                     </span>
                   </div>
                 </div>
@@ -302,13 +380,13 @@ export default function DashboardPage() {
               </div>
             ) : error ? (
               <div className="text-center py-12 text-red-400">{error}</div>
-            ) : repositories.length === 0 && user.githubProfile ? (
+            ) : !hasRepositories && user.githubProfile ? (
               <div className="text-center py-12 text-zinc-500">
                 No repositories found
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {repositories.map((repo) => (
+                {sortedGithubRepos.map((repo) => (
                   <div
                     key={repo.id}
                     className="group relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30 p-4 transition-all hover:border-purple-500/50 hover:bg-zinc-800/50"
@@ -347,10 +425,37 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ))}
+
+                {repositories.localRepos.map((repo) => (
+                  <div
+                    key={repo.id}
+                    className="group relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30 p-4 transition-all hover:border-purple-500/50 hover:bg-zinc-800/50"
+                    onClick={() => handleRepoClick('local', repo.name)}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <FolderGit2 className="h-5 w-5 text-zinc-400" />
+                      <h3 className="font-medium text-zinc-200">{repo.name}</h3>
+                    </div>
+                    {repo.description && (
+                      <p className="mt-2 text-sm text-zinc-400 line-clamp-2">
+                        {repo.description}
+                      </p>
+                    )}
+                    <div className="mt-4 flex items-center space-x-4">
+                      <div className="flex items-center text-zinc-500 text-sm">
+                        <FileIcon className="mr-1 h-4 w-4" />
+                        {repo.files.length} files
+                      </div>
+                      <span className="text-xs text-zinc-400">
+                        Created {new Date(repo.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
-            {!user.githubProfile && repositories.length === 0 && (
+            {!user.githubProfile && totalReposCount === 0 && (
               <>
                 <div className="text-center py-12">
                   <div className="space-y-6">
@@ -448,6 +553,18 @@ export default function DashboardPage() {
                             )}
                         </div>
                       </div>
+                      <Button
+                        onClick={() => setShowCreateRepo(true)}
+                        className="w-full"
+                        variant="outline"
+                      >
+                        Create New Repository
+                      </Button>
+                      <CreateRepoDialog
+                        open={showCreateRepo}
+                        onOpenChange={setShowCreateRepo}
+                        onSubmit={handleCreateRepo}
+                      />
                     </div>
                   </div>
                 </div>
