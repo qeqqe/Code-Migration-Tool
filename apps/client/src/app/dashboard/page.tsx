@@ -7,7 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { GitHubLogoIcon, StarFilledIcon } from '@radix-ui/react-icons';
 import { useRouter } from 'next/navigation';
-import { LogOut, Loader2, Code2, GitBranch } from 'lucide-react';
+import {
+  LogOut,
+  Loader2,
+  Code2,
+  GitBranch,
+  LucideFolderPlus,
+  CheckCircle2,
+} from 'lucide-react';
 import { useRepositories } from '@/hooks/useRepositories';
 import {
   Card,
@@ -17,6 +24,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { handleGithubLogin } from '@/libs/auth';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/libs/utils';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
 
 interface UserInfo {
   email: string;
@@ -35,10 +46,24 @@ interface UserInfo {
   };
 }
 
+interface FileState {
+  files: FileList | null;
+  uploading: boolean;
+  progress: number;
+  uploadedFiles: string[];
+}
+
 export default function DashboardPage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const router = useRouter();
   const { repositories, loading, error } = useRepositories();
+  const { toast } = useToast();
+  const [fileState, setFileState] = useState<FileState>({
+    files: null,
+    uploading: false,
+    progress: 0,
+    uploadedFiles: [],
+  });
 
   repositories.sort((a, b) => b.stargazersCount - a.stargazersCount);
 
@@ -91,6 +116,88 @@ export default function DashboardPage() {
 
   const handleRepoClick = (username: string, name: string) => {
     router.push(`/dashboard/${username}/${name}`);
+  };
+
+  const uploadFiles = async (files: File[]) => {
+    setFileState((prev) => ({ ...prev, uploading: true, progress: 0 }));
+    console.log(`Starting upload of ${files.length} files`);
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      console.log(`Processing file ${i + 1}/${files.length}: ${file.name}`);
+
+      if (file.size > 80 * 1024 * 1024) {
+        console.warn(`File ${file.name} exceeds size limit:`, file.size);
+        toast({
+          title: 'File too large',
+          description: `${file.name} exceeds 80MB limit`,
+          variant: 'destructive',
+        });
+        continue;
+      }
+
+      if (file.webkitRelativePath.includes('node_modules')) {
+        console.log(`Skipping node_modules file: ${file.name}`);
+        continue;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        console.log(`Uploading ${file.name}...`);
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_BACKEND_URL}/repositories/upload`,
+          {
+            method: 'POST',
+            body: formData,
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem('token')}`,
+            },
+          }
+        );
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          // ff response is not JSON, create a default result
+          result = {
+            success: response.ok,
+            message: response.ok
+              ? 'File uploaded successfully'
+              : 'Upload failed',
+            fileName: file.name,
+          };
+        }
+
+        if (!response.ok) throw new Error(result.message || 'Upload failed');
+
+        setFileState((prev) => ({
+          ...prev,
+          progress: ((i + 1) / files.length) * 100,
+          uploadedFiles: [...prev.uploadedFiles, file.name],
+        }));
+
+        toast({
+          title: result.success ? 'Success' : 'Warning',
+          description: `${file.name}: ${result.message || 'File uploaded'}`,
+          variant: result.success ? 'default' : 'destructive',
+        });
+      } catch (error) {
+        console.error(`Failed to upload ${file.name}:`, error);
+        toast({
+          title: 'Upload failed',
+          description: `Failed to upload ${file.name}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+          variant: 'destructive',
+        });
+      }
+    }
+
+    console.log('Upload process completed');
+    setFileState((prev) => ({ ...prev, uploading: false }));
   };
 
   // show loading state only if no user data
@@ -195,7 +302,7 @@ export default function DashboardPage() {
               </div>
             ) : error ? (
               <div className="text-center py-12 text-red-400">{error}</div>
-            ) : repositories.length === 0 ? (
+            ) : repositories.length === 0 && user.githubProfile ? (
               <div className="text-center py-12 text-zinc-500">
                 No repositories found
               </div>
@@ -241,6 +348,110 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
+            )}
+
+            {!user.githubProfile && repositories.length === 0 && (
+              <>
+                <div className="text-center py-12">
+                  <div className="space-y-6">
+                    <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8">
+                      <h3 className="text-xl font-semibold text-white mb-4">
+                        Choose Your Repository Source
+                      </h3>
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <div className="relative group">
+                          <Button
+                            onClick={handleGithubLogin}
+                            type="button"
+                            variant="outline"
+                            className="w-full h-32 bg-zinc-800/50 border-zinc-700 text-white hover:bg-zinc-700/50 hover:border-purple-500/50 transition-all"
+                          >
+                            <div className="flex flex-col items-center gap-3">
+                              <GitHubLogoIcon className="h-8 w-8" />
+                              <span className="text-sm">
+                                Connect with GitHub
+                              </span>
+                              <span className="text-xs text-zinc-400">
+                                Import repositories directly
+                              </span>
+                            </div>
+                          </Button>
+                        </div>
+
+                        <div className="relative group">
+                          <label
+                            htmlFor="file-upload"
+                            className={cn(
+                              'flex flex-col items-center justify-center w-full h-32',
+                              'bg-zinc-800/50 border-2 border-dashed border-zinc-700',
+                              'rounded-lg cursor-pointer',
+                              'hover:bg-zinc-700/50 hover:border-purple-500/50',
+                              'transition-all duration-200'
+                            )}
+                          >
+                            <div className="flex flex-col items-center gap-3">
+                              <LucideFolderPlus className="h-8 w-8 text-zinc-400 group-hover:text-purple-400" />
+                              <span className="text-sm text-zinc-200">
+                                {fileState.uploading
+                                  ? 'Uploading...'
+                                  : 'Upload Local Files'}
+                              </span>
+                              <span className="text-xs text-zinc-400">
+                                Max 80MB, no node_modules
+                              </span>
+                            </div>
+                            <Input
+                              id="file-upload"
+                              type="file"
+                              multiple
+                              className="hidden"
+                              disabled={fileState.uploading}
+                              onChange={async (e) => {
+                                const files = Array.from(e.target.files || []);
+                                if (files.length > 0) {
+                                  await uploadFiles(files);
+                                }
+                              }}
+                            />
+                          </label>
+
+                          {fileState.uploading && (
+                            <div className="mt-4 space-y-2">
+                              <Progress
+                                value={fileState.progress}
+                                className="h-2"
+                              />
+                              <p className="text-sm text-zinc-400 text-center">
+                                Uploading... {Math.round(fileState.progress)}%
+                              </p>
+                            </div>
+                          )}
+
+                          {fileState.uploadedFiles.length > 0 &&
+                            !fileState.uploading && (
+                              <div className="mt-4">
+                                <p className="text-sm text-zinc-400 mb-2">
+                                  Uploaded files:
+                                </p>
+                                <div className="max-h-32 overflow-y-auto space-y-1">
+                                  {fileState.uploadedFiles.map((file, i) => (
+                                    <div
+                                      key={i}
+                                      className="text-sm text-zinc-300 flex items-center gap-2"
+                                    >
+                                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                      {file}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
           </TabsContent>
 
