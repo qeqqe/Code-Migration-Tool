@@ -21,6 +21,15 @@ interface TreeNode {
   children: TreeNode[];
 }
 
+interface GitHubTreeItem {
+  path: string;
+  mode?: string;
+  type: string;
+  sha: string;
+  size?: number;
+  url: string;
+}
+
 export const FileExplorer = ({
   contents,
   currentPath,
@@ -30,17 +39,19 @@ export const FileExplorer = ({
   const [treeStructure, setTreeStructure] = useState<TreeNode[]>([]);
 
   useEffect(() => {
-    const tree = buildTree(contents);
-    setTreeStructure(tree);
+    if (Array.isArray(contents)) {
+      const tree = buildTree(contents);
+      setTreeStructure(tree);
 
-    if (currentPath) {
-      const pathParts = currentPath.split('/');
-      const newExpanded = new Set(expandedDirs);
-      for (let i = 0; i < pathParts.length - 1; i++) {
-        const partialPath = pathParts.slice(0, i + 1).join('/');
-        newExpanded.add(partialPath);
+      if (currentPath) {
+        const pathParts = currentPath.split('/');
+        const newExpanded = new Set(expandedDirs);
+        for (let i = 0; i < pathParts.length - 1; i++) {
+          const partialPath = pathParts.slice(0, i + 1).join('/');
+          newExpanded.add(partialPath);
+        }
+        setExpandedDirs(newExpanded);
       }
-      setExpandedDirs(newExpanded);
     }
   }, [contents, currentPath]);
 
@@ -51,16 +62,23 @@ export const FileExplorer = ({
     onFileClick(node.path, node.type);
   };
 
-  const buildTree = (items: RepoContent[]): TreeNode[] => {
+  const buildTree = (items: RepoContent[] | GitHubTreeItem[]): TreeNode[] => {
     const root: TreeNode[] = [];
     const map = new Map<string, TreeNode>();
 
-    items.sort((a, b) => {
-      if (a.type === b.type) return a.name.localeCompare(b.name);
-      return a.type === 'dir' ? -1 : 1;
+    // sorting items directories first, then files
+    const sortedItems = [...items].sort((a, b) => {
+      const aType = a.type === 'tree' || a.type === 'dir' ? 'dir' : 'file';
+      const bType = b.type === 'tree' || b.type === 'dir' ? 'dir' : 'file';
+      if (aType === bType) {
+        return (a.path || '').localeCompare(b.path || '');
+      }
+      return aType === 'dir' ? -1 : 1;
     });
 
-    items.forEach((item) => {
+    sortedItems.forEach((item) => {
+      if (!item.path) return; // skip items without path
+
       const paths = item.path.split('/');
       let currentPath = '';
 
@@ -71,7 +89,12 @@ export const FileExplorer = ({
           const node: TreeNode = {
             name: part,
             path: currentPath,
-            type: index === paths.length - 1 ? item.type : 'dir',
+            type:
+              index === paths.length - 1
+                ? item.type === 'tree' || item.type === 'dir'
+                  ? 'dir'
+                  : 'file'
+                : 'dir',
             children: [],
           };
           map.set(currentPath, node);

@@ -22,6 +22,9 @@ import { FileExplorer } from '@/components/FileExplorer';
 import { CodeViewer } from '@/components/CodeViewer';
 import { getLanguageColor } from '@/libs/utils';
 import { ExtendedRepository } from '@/types/repository.types';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Wand2 } from 'lucide-react';
 
 const getMigrationStatusColor = (status: string): string => {
   const colors = {
@@ -37,6 +40,7 @@ const getMigrationStatusColor = (status: string): string => {
 };
 
 const Page = () => {
+  const router = useRouter();
   const params = useParams();
   const { username, name } = params || {};
   const [loading, setLoading] = useState(true);
@@ -114,6 +118,10 @@ const Page = () => {
     fetchRepositoryContent(parentPath);
   };
 
+  const handleStartMigration = () => {
+    router.push(`/migration/${username}/${name}`);
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-black/[88%]">
@@ -187,6 +195,14 @@ const Page = () => {
                   >
                     {repository.migrationStatus}
                   </Badge>
+                  <Button
+                    variant="default"
+                    className="bg-purple-600 hover:bg-purple-700"
+                    onClick={handleStartMigration}
+                  >
+                    <Wand2 className="w-4 h-4 mr-2" />
+                    Start Migration
+                  </Button>
                 </div>
               </div>
             </div>

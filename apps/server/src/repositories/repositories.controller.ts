@@ -17,7 +17,6 @@ import { JwtAuthGuard } from '../auth/strategy/jwt.guard';
 import { Request } from 'express';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 
-// Define interface for uploaded files
 interface MulterFile {
   fieldname: string;
   originalname: string;
@@ -68,6 +67,19 @@ export class RepositoriesController {
       username,
       name,
       path
+    );
+  }
+
+  @Get(':username/:name/tree')
+  async getRepositoryTree(
+    @Req() req: Request,
+    @Param('username') username: string,
+    @Param('name') name: string
+  ) {
+    return this.repositoriesService.getRepositoryTree(
+      req.user.id,
+      username,
+      name
     );
   }
 

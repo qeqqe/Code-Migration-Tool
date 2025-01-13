@@ -19,7 +19,7 @@ export class MigrationService {
     }
   ) {
     return this.prisma.$transaction(async (tx) => {
-      // Create migration record
+      // create migration record
       const migration = await tx.migration.create({
         data: {
           name: data.name,
@@ -34,7 +34,7 @@ export class MigrationService {
         },
       });
 
-      // Create migration job
+      // create migration job
       const job = await tx.migrationJob.create({
         data: {
           status: 'PENDING',
@@ -51,7 +51,7 @@ export class MigrationService {
         },
       });
 
-      // Update repository status
+      // update repository status
       await tx.repository.update({
         where: { id: repositoryId },
         data: { migrationStatus: 'ANALYZING' },

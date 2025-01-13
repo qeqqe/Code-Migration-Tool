@@ -304,7 +304,7 @@ export class RepositoriesService {
         }
 
         if (file.path?.includes('node_modules')) {
-          return null; // Skip node_modules files
+          return null; // skip node_modules files
         }
 
         return tx.localFile.create({
@@ -501,6 +501,47 @@ export class RepositoriesService {
       };
     } catch (error) {
       this.logger.error('Error fetching local repository:', error);
+      throw error;
+    }
+  }
+
+  async getRepositoryTree(userId: string, username: string, repoName: string) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { githubToken: true },
+      });
+
+      if (!user?.githubToken) {
+        throw new HttpException('User not authorized', 401);
+      }
+
+      const treeResponse = await fetch(
+        `https://api.github.com/repos/${username}/${repoName}/git/trees/main?recursive=1`,
+        {
+          headers: {
+            Authorization: `token ${user.githubToken.accessToken}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        }
+      );
+
+      if (!treeResponse.ok) {
+        throw new HttpException(
+          'Failed to fetch repository tree',
+          treeResponse.status
+        );
+      }
+
+      const treeData = await treeResponse.json();
+      return {
+        tree: treeData.tree.map((item: any) => ({
+          ...item,
+          type: item.type === 'tree' ? 'dir' : 'file',
+        })),
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching repository tree: ${error.message}`);
       throw error;
     }
   }
