@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RepositoriesModule } from './repositories/repositories.module';
 import { RedisModule } from './redis/redis.module';
+import { MigrationModule } from './migration/migration.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { RedisModule } from './redis/redis.module';
     AuthModule,
     PrismaModule,
     RepositoriesModule,
+    MigrationModule,
   ],
 })
 export class AppModule {}
