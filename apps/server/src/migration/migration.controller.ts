@@ -6,10 +6,12 @@ import {
   Body,
   Param,
   Query,
+  Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/strategy/jwt.guard';
 import { MigrationService } from './migration.service';
 import { User } from '../auth/decorator/user.decorator';
+import { Request } from 'express';
 
 @UseGuards(JwtAuthGuard)
 @Controller('migration')
@@ -36,13 +38,15 @@ export class MigrationController {
     );
   }
 
-  @Get(':username/:name/contents/:path')
+  @Get(':username/:name/contents/*')
   async getFileContent(
     @User() user,
     @Param('username') username: string,
     @Param('name') name: string,
-    @Param('path') path: string
+    @Req() request: Request
   ) {
+    // extract the full path from the URL
+    const path = request.url.split('/contents/')[1];
     return this.migrationService.getFileContent(user.id, username, name, path);
   }
 
@@ -77,6 +81,21 @@ export class MigrationController {
       username,
       name,
       changes.files
+    );
+  }
+
+  @Get(':username/:name/directory/:path(*)')
+  async getDirectoryContents(
+    @User() user,
+    @Param('username') username: string,
+    @Param('name') name: string,
+    @Param('path') path: string
+  ) {
+    return this.migrationService.getDirectoryContents(
+      user.id,
+      username,
+      name,
+      path
     );
   }
 }

@@ -21,6 +21,23 @@ import { Badge } from '@/components/ui/badge';
 import { getLanguageColor } from '@/libs/utils';
 import { ScrollArea } from '@radix-ui/react-scroll-area';
 
+interface DirectoryItem {
+  name: string;
+  path: string;
+  type: string;
+  sha: string;
+  size: number;
+  url: string;
+  html_url: string;
+  git_url: string;
+  download_url: string | null;
+  _links: {
+    self: string;
+    git: string;
+    html: string;
+  };
+}
+
 const MigrationPage = () => {
   const params = useParams();
   const { username, name } = params;
@@ -57,24 +74,7 @@ const MigrationPage = () => {
 
       const data = await response.json();
       setRepository(data.repository);
-      // transforming tree data to match RepoContent interface
-      const transformedTree = data.tree.map((item: any) => ({
-        name: item.name,
-        path: item.path,
-        type: item.type,
-        sha: item.sha,
-        size: item.size,
-        url: item.url,
-        html_url: item.html_url,
-        git_url: item.git_url,
-        download_url: item.download_url,
-        _links: item._links || {
-          self: item.url,
-          git: item.git_url,
-          html: item.html_url,
-        },
-      }));
-      setTreeData(transformedTree);
+      setTreeData(data.contents);
       setLoading(false);
     } catch (error) {
       console.error('Failed to fetch repository tree:', error);
@@ -92,8 +92,9 @@ const MigrationPage = () => {
   const fetchFileContent = async (path: string) => {
     try {
       const token = localStorage.getItem('token');
+      const encodedPath = encodeURIComponent(path);
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL}/migration/${username}/${name}/contents/${path}`,
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/migration/${username}/${name}/contents/${encodedPath}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -109,7 +110,64 @@ const MigrationPage = () => {
       return data.content;
     } catch (error) {
       console.error('Failed to fetch file content:', error);
+      toast.error('Error', {
+        description: 'Failed to load file content',
+      });
       return null;
+    }
+  };
+
+  const fetchDirectoryContents = async (path: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_BACKEND_URL}/migration/${username}/${name}/directory/${path}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch directory contents');
+      }
+
+      const data = await response.json();
+      setTreeData((prevData) => {
+        // merge new contents with existing tree data
+        const newData = [...prevData];
+        const newContents = data.contents.map((item: DirectoryItem) => ({
+          name: item.name,
+          path: item.path,
+          type: item.type,
+          sha: item.sha,
+          size: item.size || 0,
+          url: item.url,
+          html_url: item.html_url,
+          git_url: item.git_url,
+          download_url: item.download_url,
+          _links: item._links,
+        }));
+
+        // replace or append new contents
+        newContents.forEach((item: RepoContent) => {
+          const index = newData.findIndex(
+            (existing) => existing.path === item.path
+          );
+          if (index !== -1) {
+            newData[index] = item;
+          } else {
+            newData.push(item);
+          }
+        });
+        return newData;
+      });
+    } catch (error) {
+      console.error('Failed to fetch directory contents:', error);
+      toast.error('Error', {
+        description: 'Failed to load directory contents',
+      });
     }
   };
 
@@ -121,15 +179,13 @@ const MigrationPage = () => {
 
   const handleFileClick = async (path: string, type: 'file' | 'dir') => {
     setCurrentFile(path);
-    if (type === 'file') {
-      // check if we already have the content
-      if (modifiedFiles.has(path)) {
-        setFileContent(modifiedFiles.get(path) || '');
-      } else {
-        const content = await fetchFileContent(path);
-        if (content) {
-          setFileContent(content);
-          // store original content
+    if (type === 'dir') {
+      await fetchDirectoryContents(path);
+    } else {
+      const content = await fetchFileContent(path);
+      if (content) {
+        setFileContent(content);
+        if (!originalContents.has(path)) {
           setOriginalContents((prev) => new Map(prev).set(path, content));
         }
       }

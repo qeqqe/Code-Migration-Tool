@@ -64,26 +64,23 @@ export const FileExplorer = ({
     onFileClick(node.path, node.type);
   };
 
-  const buildTree = (items: RepoContent[] | GitHubTreeItem[]): TreeNode[] => {
+  const buildTree = (items: RepoContent[]): TreeNode[] => {
     const root: TreeNode[] = [];
     const map = new Map<string, TreeNode>();
 
-    // sort items - directories first, then files alphabetically
+    // First, sort items to ensure directories come first
     const sortedItems = [...items].sort((a, b) => {
-      const aPath = a.path.toLowerCase();
-      const bPath = b.path.toLowerCase();
-      const aIsDir = aPath.includes('/');
-      const bIsDir = bPath.includes('/');
+      // Ensure we're checking the actual type from the GitHub API
+      const aIsDir = a.type === 'dir';
+      const bIsDir = b.type === 'dir';
 
       if (aIsDir === bIsDir) {
-        return aPath.localeCompare(bPath);
+        return a.name.localeCompare(b.name);
       }
       return aIsDir ? -1 : 1;
     });
 
     sortedItems.forEach((item) => {
-      if (!item.path) return;
-
       const paths = item.path.split('/');
       let currentPath = '';
 
@@ -91,12 +88,11 @@ export const FileExplorer = ({
         currentPath = currentPath ? `${currentPath}/${part}` : part;
 
         if (!map.has(currentPath)) {
-          const isDir =
-            item.path.split('/').length > 1 && index < paths.length - 1;
           const node: TreeNode = {
             name: part,
             path: currentPath,
-            type: isDir ? 'dir' : 'file',
+            // Use the actual type from the item if it's the leaf node
+            type: index === paths.length - 1 ? item.type : 'dir',
             children: [],
           };
           map.set(currentPath, node);

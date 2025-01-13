@@ -1,9 +1,10 @@
 import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { RedisService } from '../redis/redis.service';
 
 interface FileChange {
-  [key: string]: string; // More specific than any
+  [key: string]: string;
   path: string;
   content: string;
   originalContent: string;
@@ -13,7 +14,7 @@ interface FileChange {
 export class MigrationService {
   private readonly logger = new Logger(MigrationService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService) {}
 
   async createMigrationJob(
     repositoryId: number,
@@ -76,6 +77,19 @@ export class MigrationService {
     path: string
   ) {
     try {
+      // try to get from cache first
+      const cachedContent = await this.redis.getCachedFile<any>(
+        username,
+        repoName,
+        path
+      );
+      if (cachedContent) {
+        this.logger.debug(
+          `Cache hit for file: ${username}/${repoName}/${path}`
+        );
+        return cachedContent;
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: { githubToken: true },
@@ -85,25 +99,46 @@ export class MigrationService {
         throw new HttpException('User not authorized', 401);
       }
 
-      const response = await fetch(
+      // first get the file metadata to get the download_url
+      const metadataResponse = await fetch(
         `https://api.github.com/repos/${username}/${repoName}/contents/${path}`,
         {
           headers: {
             Authorization: `token ${user.githubToken.accessToken}`,
-            Accept: 'application/vnd.github.v3.raw',
+            Accept: 'application/vnd.github.v3+json',
           },
         }
       );
 
-      if (!response.ok) {
+      if (!metadataResponse.ok) {
         throw new HttpException(
-          'Failed to fetch file content',
-          response.status
+          'Failed to fetch file metadata',
+          metadataResponse.status
         );
       }
 
-      const content = await response.text();
-      return { content };
+      const metadata = await metadataResponse.json();
+
+      // then fetch the actual content using the download_url
+      const contentResponse = await fetch(metadata.download_url, {
+        headers: {
+          Authorization: `token ${user.githubToken.accessToken}`,
+        },
+      });
+
+      if (!contentResponse.ok) {
+        throw new HttpException(
+          'Failed to fetch file content',
+          contentResponse.status
+        );
+      }
+
+      const content = await contentResponse.text();
+      const responseData = { content };
+
+      // cache the file content
+      await this.redis.cacheFile(username, repoName, path, responseData);
+      return responseData;
     } catch (error) {
       this.logger.error(`Error fetching file content: ${error.message}`);
       throw error;
@@ -126,7 +161,7 @@ export class MigrationService {
         throw new HttpException('User not authorized', 401);
       }
 
-      // Create a migration job for tracking changes
+      // create a migration job for tracking changes
       const repository = await this.prisma.repository.findFirst({
         where: {
           fullName: `${username}/${repoName}`,
@@ -145,7 +180,7 @@ export class MigrationService {
         targetVersion: 'updated',
       });
 
-      // Update migration job with changes
+      // update migration job with changes
       await this.prisma.migrationJob.update({
         where: { id: migration.id },
         data: {
@@ -159,6 +194,8 @@ export class MigrationService {
         },
       });
 
+      // invalidate cache after changes
+      await this.redis.invalidateCache(username, repoName);
       return { success: true, migrationId: migration.id };
     } catch (error) {
       this.logger.error(`Error saving file changes: ${error.message}`);
@@ -168,6 +205,16 @@ export class MigrationService {
 
   async getRepositoryTree(userId: string, username: string, repoName: string) {
     try {
+      // Try to get from cache first
+      const cachedData = await this.redis.getCachedTree<any>(
+        username,
+        repoName
+      );
+      if (cachedData) {
+        this.logger.debug(`Cache hit for tree: ${username}/${repoName}`);
+        return cachedData;
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         include: {
@@ -180,7 +227,7 @@ export class MigrationService {
         throw new HttpException('User not authorized', 401);
       }
 
-      // First get repository data
+      // first get repository data
       const repository = await this.prisma.repository.findFirst({
         where: {
           AND: [
@@ -202,10 +249,10 @@ export class MigrationService {
         throw new HttpException('Repository not found', 404);
       }
 
-      // Get default branch from repository
+      // get default branch from repository
       const defaultBranch = repository.defaultBranch || 'main';
 
-      // Then fetch tree data using the correct branch
+      // then fetch tree data using the correct branch
       const treeResponse = await fetch(
         `https://api.github.com/repos/${username}/${repoName}/git/trees/${defaultBranch}?recursive=1`,
         {
@@ -225,40 +272,108 @@ export class MigrationService {
 
       const treeData = await treeResponse.json();
 
-      // Transform the tree data to match our RepoContent interface
-      const transformedTree = treeData.tree
-        .filter((item: any) => item.type === 'blob' || item.type === 'tree')
-        .map((item: any) => ({
-          name: item.path.split('/').pop(),
+      // if it's a directory, fetch its contents
+      const contentsResponse = await fetch(
+        `https://api.github.com/repos/${username}/${repoName}/contents`,
+        {
+          headers: {
+            Authorization: `token ${user.githubToken.accessToken}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        }
+      );
+
+      if (!contentsResponse.ok) {
+        throw new HttpException(
+          'Failed to fetch repository contents',
+          contentsResponse.status
+        );
+      }
+
+      const contents = await contentsResponse.json();
+
+      const responseData = {
+        repository: this.transformToDto(repository),
+        contents: contents.map((item: any) => ({
+          name: item.name,
           path: item.path,
-          type: item.type === 'tree' ? 'dir' : 'file',
+          type: item.type,
           sha: item.sha,
           size: item.size || 0,
           url: item.url,
-          html_url: `https://github.com/${username}/${repoName}/blob/${defaultBranch}/${item.path}`,
-          git_url: item.url,
-          download_url:
-            item.type === 'blob'
-              ? `https://raw.githubusercontent.com/${username}/${repoName}/${defaultBranch}/${item.path}`
-              : null,
-          _links: {
-            self: item.url,
-            git: item.url,
-            html: `https://github.com/${username}/${repoName}/blob/${defaultBranch}/${item.path}`,
-          },
-        }));
-
-      return {
-        repository: this.transformToDto(repository),
-        tree: transformedTree,
+          html_url: item.html_url,
+          git_url: item.git_url,
+          download_url: item.download_url,
+          _links: item._links,
+        })),
       };
+
+      // cache the transformed data
+      await this.redis.cacheTree(username, repoName, responseData);
+      return responseData;
     } catch (error) {
       this.logger.error(`Error fetching repository tree: ${error.message}`);
       throw error;
     }
   }
 
-  // Helper function to transform repository data
+  async getDirectoryContents(
+    userId: string,
+    username: string,
+    repoName: string,
+    path: string
+  ) {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { githubToken: true },
+      });
+
+      if (!user?.githubToken) {
+        throw new HttpException('User not authorized', 401);
+      }
+
+      const response = await fetch(
+        `https://api.github.com/repos/${username}/${repoName}/contents/${path}`,
+        {
+          headers: {
+            Authorization: `token ${user.githubToken.accessToken}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new HttpException(
+          'Failed to fetch directory contents',
+          response.status
+        );
+      }
+
+      const contents = await response.json();
+      return {
+        contents: Array.isArray(contents)
+          ? contents.map((item) => ({
+              name: item.name,
+              path: item.path,
+              type: item.type, // preserve the original type from GitHub
+              sha: item.sha,
+              size: item.size || 0,
+              url: item.url,
+              html_url: item.html_url,
+              git_url: item.git_url,
+              download_url: item.download_url,
+              _links: item._links,
+            }))
+          : [contents],
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching directory contents: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // helper function to transform repository data
   private transformToDto(repository: any) {
     return {
       ...repository,

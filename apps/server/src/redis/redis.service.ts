@@ -1,84 +1,113 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createClient, RedisClientType } from 'redis';
-import { ConfigService } from '@nestjs/config';
+import { Redis } from 'ioredis';
+import { RepositoryDto } from '../repositories/types/repository.types';
+
 @Injectable()
 export class RedisService {
-  private client: RedisClientType;
-  private readonly ttl: number;
+  private readonly redis: Redis;
   private readonly logger = new Logger(RedisService.name);
+  private readonly CACHE_TTL = 3600; // 1 hour
 
-  constructor(private configService: ConfigService) {
-    this.ttl = this.configService.get<number>('REDIS_CACHE_TTL') || 7200;
-    this.client = createClient({
-      url:
-        this.configService.get<string>('REDIS_URL') || 'redis://localhost:6379',
-    });
-    this.client.connect().catch((error) => {
-      this.logger.error(`An error occurred: ${error}`);
-      throw error;
+  constructor() {
+    this.redis = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: Number(process.env.REDIS_PORT) || 6379,
     });
   }
-  async onModuleDestroy() {
-    await this.client.quit();
+
+  // cache keys
+  private getTreeKey(username: string, repo: string) {
+    return `tree:${username}:${repo}`;
   }
 
-  private generateKey(parts: string[]): string {
-    return parts.join(':').replace(/\//g, ':');
+  private getFileKey(username: string, repo: string, path: string) {
+    return `file:${username}:${repo}:${path}`;
   }
 
-  async get<T>(key: string): Promise<T | null> {
-    const data = await this.client.get(key);
-    return data ? JSON.parse(data) : null;
-  }
-
-  async set(key: string, value: any, ttl: number = this.ttl): Promise<void> {
-    await this.client.setEx(key, ttl, JSON.stringify(value));
-  }
-
-  async delete(key: string): Promise<void> {
-    await this.client.del(key);
-  }
-
-  async getCachedRepo<T>(owner: string, repo: string): Promise<T | null> {
-    const key = this.generateKey(['repo', owner, repo, 'data']);
-    this.logger.debug(`Getting cached repo with key: ${key}`);
-    return this.get<T>(key);
-  }
-
-  async cacheRepo(owner: string, repo: string, data: any) {
-    const key = this.generateKey(['repo', owner, repo, 'data']);
-    this.logger.debug(`Caching repo with key: ${key}`);
-    await this.set(key, data);
-  }
-
-  async getCachedFile<T>(
-    owner: string,
-    repo: string,
-    path: string
-  ): Promise<T | null> {
-    const key = this.generateKey(['repo', owner, repo, 'file', path]);
-    this.logger.debug(`Getting cached file with key: ${key}`);
-    return this.get<T>(key);
-  }
-
-  async cacheFile(owner: string, repo: string, path: string, data: any) {
-    const key = this.generateKey(['repo', owner, repo, 'file', path]);
-    this.logger.debug(`Caching file with key: ${key}`);
-    await this.set(key, data);
-  }
-
-  async invalidateRepoCache(owner: string, repo: string) {
-    const pattern = this.generateKey(['repo', owner, repo, '*']);
-    this.logger.debug(`Invalidating cache with pattern: ${pattern}`);
-    const keys = await this.client.keys(pattern);
-    if (keys.length) {
-      this.logger.debug(`Found ${keys.length} keys to invalidate`);
-      await this.client.del(keys);
+  async getCachedTree<T>(username: string, repo: string): Promise<T | null> {
+    try {
+      const data = await this.redis.get(this.getTreeKey(username, repo));
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      this.logger.error(`Redis cache get error: ${error.message}`);
+      return null;
     }
   }
 
-  async invalidateFileCache(owner: string, repo: string, path: string) {
-    const key = `repo:${owner}:${repo}:file:${path}`;
-    await this.delete(key);
+  async cacheTree(username: string, repo: string, data: unknown) {
+    try {
+      await this.redis.setex(
+        this.getTreeKey(username, repo),
+        this.CACHE_TTL,
+        JSON.stringify(data)
+      );
+    } catch (error) {
+      this.logger.error(`Redis cache set error: ${error.message}`);
+    }
+  }
+
+  async getCachedFile<T>(
+    username: string,
+    repo: string,
+    path: string
+  ): Promise<T | null> {
+    try {
+      const data = await this.redis.get(this.getFileKey(username, repo, path));
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      this.logger.error(`Redis cache get error: ${error.message}`);
+      return null;
+    }
+  }
+
+  async cacheFile(
+    username: string,
+    repo: string,
+    path: string,
+    content: unknown
+  ) {
+    try {
+      await this.redis.setex(
+        this.getFileKey(username, repo, path),
+        this.CACHE_TTL,
+        JSON.stringify(content)
+      );
+    } catch (error) {
+      this.logger.error(`Redis cache set error: ${error.message}`);
+    }
+  }
+
+  async invalidateCache(username: string, repo: string) {
+    try {
+      const pattern = `*:${username}:${repo}*`;
+      const keys = await this.redis.keys(pattern);
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+      }
+    } catch (error) {
+      this.logger.error(`Redis cache invalidation error: ${error.message}`);
+    }
+  }
+
+  async getCachedRepo(username: string, repoName: string) {
+    try {
+      const data = await this.redis.get(this.getTreeKey(username, repoName));
+      return data ? JSON.parse(data) : null;
+    } catch (error) {
+      this.logger.error(`Redis cache get error: ${error.message}`);
+      return null;
+    }
+  }
+
+  async cacheRepo(username: string, repoName: string, responseData: unknown) {
+    try {
+      await this.redis.setex(
+        this.getTreeKey(username, repoName),
+        this.CACHE_TTL,
+        JSON.stringify(responseData)
+      );
+    } catch (error) {
+      this.logger.error(`Redis cache set error: ${error.message}`);
+    }
   }
 }

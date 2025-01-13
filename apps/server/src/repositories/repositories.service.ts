@@ -39,6 +39,14 @@ interface AllRepositoriesResponse {
   }[];
 }
 
+interface GitHubTreeItem {
+  path: string;
+  type: string;
+  sha: string;
+  size?: number;
+  url: string;
+}
+
 @Injectable()
 export class RepositoriesService {
   private readonly logger = new Logger(RepositoriesService.name);
@@ -106,15 +114,8 @@ export class RepositoriesService {
 
       // get cached data first
       const cachedData = path
-        ? await this.redis.getCachedFile<RepoContentResponse>(
-            username,
-            repoName,
-            path
-          )
-        : await this.redis.getCachedRepo<RepoContentResponse>(
-            username,
-            repoName
-          );
+        ? await this.redis.getCachedFile(username, repoName, path)
+        : await this.redis.getCachedRepo(username, repoName);
 
       if (cachedData && this.isValidRepoResponse(cachedData)) {
         this.logger.debug(`Cache hit for ${username}/${repoName}/${cacheKey}`);
@@ -231,7 +232,7 @@ export class RepositoriesService {
 
   // invalidate cache when needed
   async invalidateRepoCache(username: string, repoName: string): Promise<void> {
-    await this.redis.invalidateRepoCache(username, repoName);
+    await this.redis.invalidateCache(username, repoName);
   }
 
   async getAllRepositories(userId: string): Promise<AllRepositoriesResponse> {
@@ -519,7 +520,7 @@ export class RepositoriesService {
         throw new HttpException('User not authorized', 401);
       }
 
-      // First get repository data
+      // first get repository data
       const repository = await this.prisma.repository.findFirst({
         where: {
           AND: [
@@ -541,7 +542,7 @@ export class RepositoriesService {
         throw new HttpException('Repository not found', 404);
       }
 
-      // Then fetch tree data
+      // then fetch tree data
       const treeResponse = await fetch(
         `https://api.github.com/repos/${username}/${repoName}/git/trees/main?recursive=1`,
         {
@@ -562,12 +563,12 @@ export class RepositoriesService {
       const treeData = await treeResponse.json();
       return {
         repository: this.transformToDto(repository),
-        tree: treeData.tree.map((item: any) => ({
-          name: item.path.split('/').pop(),
+        tree: treeData.tree.map((item: GitHubTreeItem) => ({
+          name: item.path.split('/').pop() || '',
           path: item.path,
           type: item.type === 'tree' ? 'dir' : 'file',
           sha: item.sha,
-          size: item.size,
+          size: item.size || 0,
           url: item.url,
         })),
       };
