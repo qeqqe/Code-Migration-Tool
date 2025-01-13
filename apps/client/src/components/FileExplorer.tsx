@@ -12,6 +12,7 @@ interface FileExplorerProps {
   contents: RepoContent[];
   currentPath: string;
   onFileClick: (path: string, type: 'file' | 'dir') => void;
+  modifiedFiles?: Set<string>; // add this prop
 }
 
 interface TreeNode {
@@ -34,6 +35,7 @@ export const FileExplorer = ({
   contents,
   currentPath,
   onFileClick,
+  modifiedFiles = new Set(),
 }: FileExplorerProps) => {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [treeStructure, setTreeStructure] = useState<TreeNode[]>([]);
@@ -66,18 +68,21 @@ export const FileExplorer = ({
     const root: TreeNode[] = [];
     const map = new Map<string, TreeNode>();
 
-    // sorting items directories first, then files
+    // sort items - directories first, then files alphabetically
     const sortedItems = [...items].sort((a, b) => {
-      const aType = a.type === 'tree' || a.type === 'dir' ? 'dir' : 'file';
-      const bType = b.type === 'tree' || b.type === 'dir' ? 'dir' : 'file';
-      if (aType === bType) {
-        return (a.path || '').localeCompare(b.path || '');
+      const aPath = a.path.toLowerCase();
+      const bPath = b.path.toLowerCase();
+      const aIsDir = aPath.includes('/');
+      const bIsDir = bPath.includes('/');
+
+      if (aIsDir === bIsDir) {
+        return aPath.localeCompare(bPath);
       }
-      return aType === 'dir' ? -1 : 1;
+      return aIsDir ? -1 : 1;
     });
 
     sortedItems.forEach((item) => {
-      if (!item.path) return; // skip items without path
+      if (!item.path) return;
 
       const paths = item.path.split('/');
       let currentPath = '';
@@ -86,15 +91,12 @@ export const FileExplorer = ({
         currentPath = currentPath ? `${currentPath}/${part}` : part;
 
         if (!map.has(currentPath)) {
+          const isDir =
+            item.path.split('/').length > 1 && index < paths.length - 1;
           const node: TreeNode = {
             name: part,
             path: currentPath,
-            type:
-              index === paths.length - 1
-                ? item.type === 'tree' || item.type === 'dir'
-                  ? 'dir'
-                  : 'file'
-                : 'dir',
+            type: isDir ? 'dir' : 'file',
             children: [],
           };
           map.set(currentPath, node);
@@ -126,6 +128,7 @@ export const FileExplorer = ({
   const renderNode = (node: TreeNode, depth = 0) => {
     const isExpanded = expandedDirs.has(node.path);
     const isCurrentPath = currentPath === node.path;
+    const isModified = modifiedFiles.has(node.path);
 
     return (
       <div key={node.path} className="select-none">
@@ -133,6 +136,8 @@ export const FileExplorer = ({
           className={`flex items-center space-x-2 px-2 py-1 rounded-md cursor-pointer transition-colors ${
             isCurrentPath
               ? 'bg-purple-500/10 text-purple-400'
+              : isModified
+              ? 'bg-yellow-500/10 text-yellow-400'
               : 'hover:bg-zinc-800/50 text-zinc-300'
           }`}
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
@@ -157,6 +162,9 @@ export const FileExplorer = ({
               <FileIcon className="h-4 w-4 text-zinc-400 shrink-0" />
             )}
             <span className="text-sm truncate">{node.name}</span>
+            {isModified && (
+              <div className="w-2 h-2 rounded-full bg-yellow-400 ml-2" />
+            )}
           </div>
         </div>
         {node.type === 'dir' && (

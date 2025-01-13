@@ -509,13 +509,39 @@ export class RepositoriesService {
     try {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
-        include: { githubToken: true },
+        include: {
+          githubToken: true,
+          githubProfile: true,
+        },
       });
 
       if (!user?.githubToken) {
         throw new HttpException('User not authorized', 401);
       }
 
+      // First get repository data
+      const repository = await this.prisma.repository.findFirst({
+        where: {
+          AND: [
+            { githubProfileId: user.githubProfile.id },
+            { fullName: `${username}/${repoName}` },
+          ],
+        },
+        include: {
+          githubProfile: {
+            select: {
+              login: true,
+              avatarUrl: true,
+            },
+          },
+        },
+      });
+
+      if (!repository) {
+        throw new HttpException('Repository not found', 404);
+      }
+
+      // Then fetch tree data
       const treeResponse = await fetch(
         `https://api.github.com/repos/${username}/${repoName}/git/trees/main?recursive=1`,
         {
@@ -535,9 +561,14 @@ export class RepositoriesService {
 
       const treeData = await treeResponse.json();
       return {
+        repository: this.transformToDto(repository),
         tree: treeData.tree.map((item: any) => ({
-          ...item,
+          name: item.path.split('/').pop(),
+          path: item.path,
           type: item.type === 'tree' ? 'dir' : 'file',
+          sha: item.sha,
+          size: item.size,
+          url: item.url,
         })),
       };
     } catch (error) {
