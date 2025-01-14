@@ -251,12 +251,13 @@ const MigrationPage = () => {
 
   return (
     <div className="min-h-screen bg-black/[88%]">
-      <div className="mx-auto max-w-[90rem] p-6 space-y-8">
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="mx-auto max-w-[90rem] p-4 lg:p-6 space-y-4 lg:space-y-8">
+        {/* Repository Header */}
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 lg:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold text-white">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl lg:text-3xl font-bold text-white">
                   {repository?.name || name}
                 </h1>
                 {repository?.private && (
@@ -265,7 +266,7 @@ const MigrationPage = () => {
                   </Badge>
                 )}
               </div>
-              <p className="text-zinc-400 text-lg">
+              <p className="text-zinc-400 text-base lg:text-lg">
                 {repository?.description ||
                   'Select files to modify and get AI suggestions'}
               </p>
@@ -283,9 +284,9 @@ const MigrationPage = () => {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               <Select value={selectedModel} onValueChange={setSelectedModel}>
-                <SelectTrigger className="w-[180px] bg-zinc-900/50 border-zinc-700">
+                <SelectTrigger className="w-full sm:w-[180px] bg-zinc-900/50 border-zinc-700">
                   <SelectValue placeholder="Select Model" />
                 </SelectTrigger>
                 <SelectContent>
@@ -299,7 +300,7 @@ const MigrationPage = () => {
               <Button
                 variant="default"
                 onClick={handleSaveChanges}
-                className="bg-purple-600 hover:bg-purple-700"
+                className="bg-purple-600 hover:bg-purple-700 w-full sm:w-auto"
                 disabled={saving || modifiedFiles.size === 0}
               >
                 {saving ? (
@@ -313,8 +314,10 @@ const MigrationPage = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 gap-6 h-[calc(100vh-16rem)]">
-          <div className="col-span-2">
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 h-[calc(100vh-12rem)] lg:h-[calc(100vh-16rem)]">
+          {/* File Explorer */}
+          <div className="lg:col-span-2 h-[300px] lg:h-full">
             <Card className="h-full bg-zinc-900/50 border-zinc-800 overflow-hidden">
               <FileExplorer
                 contents={treeData}
@@ -325,7 +328,8 @@ const MigrationPage = () => {
             </Card>
           </div>
 
-          <div className="col-span-7">
+          {/* Code Editor */}
+          <div className="lg:col-span-7 h-[calc(100vh-450px)] lg:h-full">
             <Card className="h-full bg-zinc-900/50 border-zinc-800 overflow-hidden">
               {fileContent ? (
                 <div className="h-full w-full">
@@ -341,11 +345,13 @@ const MigrationPage = () => {
                       fontSize: 14,
                       readOnly: saving,
                       automaticLayout: true,
+                      wordWrap: 'on',
+                      scrollBeyondLastLine: false,
                     }}
                   />
                 </div>
               ) : (
-                <div className="h-full flex items-center justify-center">
+                <div className="h-full flex items-center justify-center p-4">
                   <div className="text-center space-y-3">
                     <FileCode className="h-8 w-8 text-zinc-500 mx-auto" />
                     <p className="text-zinc-400">
@@ -357,11 +363,12 @@ const MigrationPage = () => {
             </Card>
           </div>
 
-          <div className="col-span-3">
+          {/* AI Suggestions */}
+          <div className="lg:col-span-3 h-[300px] lg:h-full">
             <Card className="h-full bg-zinc-900/50 border-zinc-800 flex flex-col">
               <div className="p-4 border-b border-zinc-800 shrink-0">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-lg font-semibold text-white truncate">
                     AI Suggestions
                   </h3>
                   <Button
@@ -369,6 +376,7 @@ const MigrationPage = () => {
                     size="sm"
                     onClick={handleAiSuggest}
                     disabled={!currentFile}
+                    className="shrink-0"
                   >
                     <Bot className="w-4 h-4 mr-2" />
                     Get Suggestions
@@ -390,7 +398,7 @@ const MigrationPage = () => {
                     <div className="h-full flex items-center justify-center py-8">
                       <div className="text-center space-y-3">
                         <Bot className="h-8 w-8 text-zinc-500 mx-auto" />
-                        <p className="text-zinc-400">
+                        <p className="text-zinc-400 px-4">
                           Select a file to get AI suggestions
                         </p>
                       </div>
