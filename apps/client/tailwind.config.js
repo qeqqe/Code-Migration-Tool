@@ -7,6 +7,7 @@ module.exports = {
   content: [
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './node_modules/react-markdown/**/*.js',
     join(
       __dirname,
       '{src,pages,components,app}/**/*!(*.stories|*.spec).{ts,tsx,html}'
@@ -67,5 +68,5 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [require('@tailwindcss/typography')],
 };

@@ -9,24 +9,23 @@ export class AiService {
   async chat(message: string): Promise<string> {
     try {
       this.logger.debug(`Sending request to LM Studio at ${this.API_URL}`);
-      this.logger.debug(`Message: ${message}`);
 
-      const response = await fetch(`${this.API_URL}/chat/completions`, {
+      const systemPrompt =
+        'You are a helpful programming assistant. Provide clear, concise responses without unnecessary markdown formatting or code block labels. When showing code, use appropriate syntax highlighting but avoid explanatory text unless specifically asked.';
+
+      const fullPrompt = `${systemPrompt}\n\nUser: ${message}\n\nAssistant:`;
+
+      const response = await fetch(`${this.API_URL}/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [
-            {
-              role: 'user',
-              content: message,
-            },
-          ],
-          model: 'local-model',
+          prompt: fullPrompt,
+          model: 'deepseek-coder-6.7b-instruct',
           temperature: 0.7,
           max_tokens: 2000,
-          stream: false,
+          stop: ['\nUser:', '\n\nHuman:'],
         }),
       });
 
@@ -41,10 +40,10 @@ export class AiService {
 
       try {
         const data = JSON.parse(responseText);
-        if (!data.choices?.[0]?.message?.content) {
+        if (!data.choices?.[0]?.text) {
           throw new Error('Invalid response format from LM Studio');
         }
-        return data.choices[0].message.content;
+        return data.choices[0].text.trim();
       } catch (parseError) {
         throw new Error(
           `Failed to parse LM Studio response: ${parseError.message}`
