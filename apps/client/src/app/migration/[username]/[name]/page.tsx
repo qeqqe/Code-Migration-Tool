@@ -239,6 +239,13 @@ const MigrationPage = () => {
     // later
   };
 
+  // Add this to get all file paths
+  const getAllFilePaths = (contents: RepoContent[]): string[] => {
+    return contents
+      .filter((item) => item.type === 'file')
+      .map((item) => item.path);
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-black/[88%]">
@@ -365,7 +372,11 @@ const MigrationPage = () => {
             </div>
 
             {/* AI Suggestions - Full height with scroll */}
-            <AiSuggesion />
+            <AiSuggesion
+              currentFile={currentFile}
+              availableFiles={getAllFilePaths(treeData)}
+              selectedModel={selectedModel} // Pass the selected model
+            />
           </div>
         </div>
       </div>
