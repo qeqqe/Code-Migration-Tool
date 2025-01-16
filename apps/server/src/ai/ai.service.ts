@@ -7,26 +7,28 @@ export class AiService {
   private readonly API_URL =
     process.env.LM_STUDIO_API_URL || 'http://localhost:1234/v1';
 
-  private readonly SYSTEM_PROMPT = `You are a specialized code analysis assistant. When analyzing code files:
+  private readonly SYSTEM_PROMPT = `You are a specialized code analysis assistant. Your task is to analyze code files with these specific rules:
 
-1. ALWAYS start by explaining the purpose of the file and its main functionality
-2. Break down the key components and their roles
-3. Highlight important patterns, dependencies, and configurations
-4. Focus on explaining how the code works rather than just listing what you see
+1. Always focus on the ACTUAL code being shown, not generic explanations
+2. When analyzing files, explain:
+   - The specific context and purpose of THIS file
+   - How THIS code works and what it does
+   - Key patterns and features used in THIS code
+   - Real examples from the code shown
 
-For example, when analyzing a server.js file:
-- Explain what the server does (e.g., "This is a Discord bot server that handles various commands and events...")
-- List the main features and functionalities
-- Describe how different components interact
-- Note any important configurations or dependencies
+3. For example, if analyzing a Socket.io context provider, explain:
+   - The specific socket setup and configuration shown in the code
+   - How the context and hooks are implemented in THIS file
+   - The actual implementation details present
+   - Real examples using the code that's shown
 
 DO NOT:
-- Just list imports without explaining their purpose
-- Give generic responses about file types
-- Ignore the actual content of the file
-- Mention unrelated configuration files
+- Give generic explanations about technologies
+- Explain concepts not present in the code
+- Ignore the actual implementation details
+- Write long descriptions about related technologies
 
-Keep responses focused on the actual code being analyzed.`;
+Keep responses focused on ONLY what's in the actual code being analyzed.`;
 
   private context: { role: string; content: string }[] = [];
 
@@ -56,12 +58,17 @@ Keep responses focused on the actual code being analyzed.`;
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: `${this.SYSTEM_PROMPT}\n\nHere's the code to analyze:\n\n${message}`,
+          prompt: `${this.SYSTEM_PROMPT}\n\nAnalyze this specific code:\n\n${message}`,
           model: 'qwen2.5-coder-7b-instruct',
-          temperature: 0.3,
-          max_tokens: 2000,
+          temperature: 0.2, // Reduced for more focused responses
+          max_tokens: 1000, // Reduced to encourage conciseness
           stream: false,
-          stop: ['\n\nHuman:', '\n\nAssistant:', '\n\n---'],
+          stop: [
+            '\n\nHuman:',
+            '\n\nAssistant:',
+            '\n\n---',
+            '\n\nAnalysis complete',
+          ],
         }),
       });
 
@@ -101,15 +108,20 @@ Keep responses focused on the actual code being analyzed.`;
     selectedModel?: string
   ): AsyncGenerator<string> {
     try {
+      const isCodeAnalysis = message.includes('```');
+      const formattedPrompt = isCodeAnalysis
+        ? message // Keep the full message if it contains code blocks
+        : `${this.SYSTEM_PROMPT}\n\n${message}`;
+
       const response = await fetch(`${this.API_URL}/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: `${this.SYSTEM_PROMPT}\n\n${message}`,
+          prompt: formattedPrompt,
           model: this.getModelName(selectedModel),
-          temperature: 0.3,
+          temperature: 0.2,
           max_tokens: 2000,
           stream: true,
           stop: ['\n\nHuman:', '\n\nAssistant:', '\n\n---'],

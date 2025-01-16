@@ -169,16 +169,17 @@ const AiSuggestion = ({
     if (!input.trim()) return;
 
     if (!socketConnected) {
-      console.log('Socket not connected, attempting to reconnect...');
       socket.connect();
       toast.error('Not connected', { description: 'Trying to reconnect...' });
       return;
     }
 
-    console.log('Sending message:', input.trim());
-    console.log('Selected files:', selectedFiles);
-    console.log('Socket connected:', socket.connected);
-    console.log('Socket ID:', socket.id);
+    if (selectedFiles.length === 0) {
+      toast.warning('No files selected', {
+        description: 'Please select at least one file to analyze',
+      });
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -187,27 +188,48 @@ const AiSuggestion = ({
       timestamp: new Date(),
     };
 
+    // Create a more specific prompt when files are selected
+    const promptText =
+      selectedFiles.length > 0
+        ? `${input.trim()}\n\nPlease focus on the selected files and their contents.`
+        : input.trim();
+
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
 
-    socket.emit(
-      'chat',
-      {
-        message: userMessage.content,
-        files: selectedFiles,
-        model: selectedModel,
-      },
-      (response: any) => {
-        console.log('Message acknowledged:', response);
-      }
-    );
+    socket.emit('chat', {
+      message: promptText,
+      files: selectedFiles,
+      model: selectedModel,
+    });
   };
 
   const handleSelectFile = (value: string) => {
+    if (!value) return;
+
+    // Clear any previous error states
     setSelectedFile(value);
+
+    // Add file to selection and verify it's not already selected
     if (!selectedFiles.includes(value)) {
       setSelectedFiles((prev) => [...prev, value]);
+
+      // Set default prompt if input is empty
+      if (input.trim() === '') {
+        setInput('Please analyze this file and explain what it does.');
+      }
+
+      // Show confirmation toast
+      toast.success('File added', {
+        description: `Added ${value.split('/').pop()} for analysis`,
+      });
+    } else {
+      toast.info('File already selected', {
+        description: `${value
+          .split('/')
+          .pop()} is already in the analysis list`,
+      });
     }
   };
 
@@ -245,9 +267,9 @@ const AiSuggestion = ({
 
   return (
     <div className="lg:col-span-3 h-[300px] lg:h-full">
-      <Card className="h-full bg-zinc-900/50 border-zinc-800 flex flex-col">
-        {/* Header */}
-        <div className="shrink-0 p-4 border-b border-zinc-800">
+      <Card className="h-full bg-zinc-900/50 border-zinc-800 flex flex-col overflow-hidden">
+        {/* Header - Fixed height */}
+        <div className="flex-none p-4 border-b border-zinc-800">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white truncate">
               AI Chat
@@ -299,10 +321,10 @@ const AiSuggestion = ({
           )}
         </div>
 
-        {/* Messages Container - Fixed Height with Auto Scroll */}
-        <div className="flex-1 overflow-hidden relative">
-          <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
-            <div className="p-4 space-y-4">
+        {/* Messages Container - Scrollable */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="h-full overflow-y-auto custom-scrollbar p-4">
+            <div className="space-y-4">
               {messages.map((message) => (
                 <div
                   key={message.id}
@@ -330,8 +352,8 @@ const AiSuggestion = ({
           </div>
         </div>
 
-        {/* Input Form */}
-        <div className="shrink-0 p-4 border-t border-zinc-800">
+        {/* Input Form - Fixed height */}
+        <div className="flex-none p-4 border-t border-zinc-800">
           <form
             onSubmit={(e) => {
               e.preventDefault();

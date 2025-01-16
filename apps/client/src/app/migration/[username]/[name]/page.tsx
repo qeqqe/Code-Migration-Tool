@@ -257,11 +257,11 @@ const MigrationPage = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-black/[88%] overflow-hidden">
-      <div className="flex-1 overflow-hidden">
-        <div className="mx-auto max-w-[90rem] h-full p-4 lg:p-6 flex flex-col space-y-4">
-          {/* Repository Header - Now with fixed height */}
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 lg:p-8 shrink-0">
+    <div className="h-screen flex flex-col overflow-hidden bg-black/[88%]">
+      {/* Header Section */}
+      <div className="flex-none p-4 lg:p-6">
+        <div className="mx-auto max-w-[90rem]">
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 lg:p-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
@@ -321,12 +321,16 @@ const MigrationPage = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Main Content Grid - Fill remaining height */}
-          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 min-h-0">
-            {/* File Explorer - Full height with scroll */}
-            <div className="lg:col-span-2 h-[300px] lg:h-full">
-              <Card className="h-full bg-zinc-900/50 border-zinc-800 overflow-hidden">
+      {/* Main Content Section */}
+      <div className="flex-1 min-h-0 p-4 lg:p-6 pt-0 lg:pt-0">
+        <div className="mx-auto max-w-[90rem] h-full">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6 h-full">
+            {/* File Explorer */}
+            <div className="lg:col-span-2 h-[300px] lg:h-full overflow-hidden">
+              <Card className="h-full bg-zinc-900/50 border-zinc-800">
                 <FileExplorer
                   contents={treeData}
                   onFileClick={handleFileClick}
@@ -336,11 +340,11 @@ const MigrationPage = () => {
               </Card>
             </div>
 
-            {/* Code Editor - Full height with scroll */}
-            <div className="lg:col-span-7 h-[calc(100vh-450px)] lg:h-full">
-              <Card className="h-full bg-zinc-900/50 border-zinc-800 overflow-hidden flex flex-col">
+            {/* Code Editor */}
+            <div className="lg:col-span-7 h-[calc(100vh-450px)] lg:h-full overflow-hidden">
+              <Card className="h-full bg-zinc-900/50 border-zinc-800">
                 {fileContent ? (
-                  <div className="flex-1 min-h-0">
+                  <div className="h-full">
                     <Editor
                       height="100%"
                       width="100%"
@@ -371,12 +375,14 @@ const MigrationPage = () => {
               </Card>
             </div>
 
-            {/* AI Suggestions - Full height with scroll */}
-            <AiSuggesion
-              currentFile={currentFile}
-              availableFiles={getAllFilePaths(treeData)}
-              selectedModel={selectedModel} // Pass the selected model
-            />
+            {/* AI Suggestions */}
+            <div className="lg:col-span-3 h-[300px] lg:h-full overflow-hidden">
+              <AiSuggesion
+                currentFile={currentFile}
+                availableFiles={getAllFilePaths(treeData)}
+                selectedModel={selectedModel} // Pass the selected model
+              />
+            </div>
           </div>
         </div>
       </div>
